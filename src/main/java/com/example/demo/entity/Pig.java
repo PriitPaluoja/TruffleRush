@@ -51,7 +51,7 @@ public class Pig {
 
     private static final double WEIGHT_INITIAL = 50.0;
     private static final double WEIGHT_MIN     = 10.0;
-    private static final double WEIGHT_DECAY   = 0.05;
+    private static final double WEIGHT_DECAY   = 0.008;
 
     // -------------------------------------------------------------------------
     // Constructor

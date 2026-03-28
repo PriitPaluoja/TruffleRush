@@ -61,6 +61,15 @@ public class RoundEndOverlay {
     /** Dynamically created per pig on each show() call. */
     private final List<Text> rankTexts = new ArrayList<>();
 
+    /** "Play Again" button background. */
+    private final Rectangle playAgainBg;
+
+    /** "Play Again" button label. */
+    private final Text playAgainText;
+
+    /** Callback invoked when the player clicks "Play Again". */
+    private Runnable onPlayAgain;
+
     private final int mapWidth;
     private final int mapHeight;
 
@@ -88,7 +97,30 @@ public class RoundEndOverlay {
         titleText.setFill(TITLE_COLOR);
         titleText.setTextAlignment(TextAlignment.CENTER);
 
-        group.getChildren().addAll(backdrop, titleText);
+        // "Play Again" button
+        double btnW = 180, btnH = 44;
+        playAgainBg = new Rectangle(
+            (mapWidth - btnW) / 2.0, mapHeight - 80, btnW, btnH);
+        playAgainBg.setFill(Color.rgb(60, 140, 60));
+        playAgainBg.setStroke(Color.rgb(30, 100, 30));
+        playAgainBg.setStrokeWidth(2);
+        playAgainBg.setArcWidth(12);
+        playAgainBg.setArcHeight(12);
+
+        playAgainText = new Text("Play Again");
+        playAgainText.setFont(Font.font("System", FontWeight.BOLD, 20));
+        playAgainText.setFill(Color.WHITE);
+        double labelW = playAgainText.getText().length() * 20 * 0.55;
+        playAgainText.setX((mapWidth - labelW) / 2.0);
+        playAgainText.setY(mapHeight - 80 + 29);
+
+        // Hover effect
+        playAgainBg.setOnMouseEntered(e -> playAgainBg.setFill(Color.rgb(80, 170, 80)));
+        playAgainBg.setOnMouseExited(e -> playAgainBg.setFill(Color.rgb(60, 140, 60)));
+        playAgainBg.setOnMouseClicked(e -> { if (onPlayAgain != null) onPlayAgain.run(); });
+        playAgainText.setOnMouseClicked(e -> { if (onPlayAgain != null) onPlayAgain.run(); });
+
+        group.getChildren().addAll(backdrop, titleText, playAgainBg, playAgainText);
         group.setVisible(false);
     }
 
@@ -160,6 +192,15 @@ public class RoundEndOverlay {
         }
 
         group.setVisible(true);
+    }
+
+    /**
+     * Registers a callback invoked when the player clicks "Play Again".
+     *
+     * @param action the restart callback
+     */
+    public void setOnPlayAgain(Runnable action) {
+        this.onPlayAgain = action;
     }
 
     /**

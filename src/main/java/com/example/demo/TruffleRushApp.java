@@ -46,12 +46,18 @@ public class TruffleRushApp extends Application {
     static final double WIN_WEIGHT = 150.0;
 
     private Direction heldDirection = Direction.NONE;
+    private AnimationTimer activeTimer;
 
     @Override
     public void start(Stage stage) {
+        // Stop any previous game loop
+        if (activeTimer != null) {
+            activeTimer.stop();
+        }
+
         // --- World ---
         GameMap map = new GameMap();
-        new MapGenerator(42L).generate(map);
+        new MapGenerator(System.currentTimeMillis()).generate(map);
 
         // --- Event bus ---
         EventBus eventBus = new EventBus();
@@ -100,6 +106,12 @@ public class TruffleRushApp extends Application {
         RoundEndOverlay       roundEndOverlay   = new RoundEndOverlay(mapW, mapH);
 
         obstacleRenderer.render(map);
+
+        // --- Play Again wiring ---
+        roundEndOverlay.setOnPlayAgain(() -> {
+            heldDirection = Direction.NONE;
+            start(stage);
+        });
 
         // --- Scene graph (back to front) ---
         Group root = new Group();
@@ -159,7 +171,7 @@ public class TruffleRushApp extends Application {
         final int[]     spawnAccum   = {0};
 
         // --- Game loop ---
-        AnimationTimer timer = new AnimationTimer() {
+        activeTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (roundOver[0]) return;
@@ -301,7 +313,7 @@ public class TruffleRushApp extends Application {
                     weatherSystem.getCurrentWeather().name(), sniffReady, sniffSecs);
             }
         };
-        timer.start();
+        activeTimer.start();
     }
 
     private void resolveCollisions(List<Pig> pigs,

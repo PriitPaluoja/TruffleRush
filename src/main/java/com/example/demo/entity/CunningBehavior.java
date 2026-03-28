@@ -40,13 +40,17 @@ public class CunningBehavior implements PigBehavior {
         List<Item> candidates = getPositiveNonHazardItems();
 
         if (!candidates.isEmpty()) {
-            // Find the item with the highest weightDelta
+            // Score each item: prefer high value, break ties by proximity
             Item bestItem = null;
-            int bestDelta = Integer.MIN_VALUE;
+            double bestScore = Double.NEGATIVE_INFINITY;
 
             for (Item item : candidates) {
-                if (item.getType().weightDelta > bestDelta) {
-                    bestDelta = item.getType().weightDelta;
+                int dist = Math.abs(item.getCol() - self.getCol())
+                         + Math.abs(item.getRow() - self.getRow());
+                // Value per distance — higher is better
+                double score = item.getType().weightDelta / Math.max(1.0, dist);
+                if (score > bestScore) {
+                    bestScore = score;
                     bestItem = item;
                 }
             }
