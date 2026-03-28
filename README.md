@@ -10,6 +10,9 @@ A grid-based top-down foraging game built with pure JavaFX. You control a pig co
 ## Running
 
 ```bash
+# Windows, in CMD (command prompt):
+gradlew run
+# Linux, in terminal:
 ./gradlew run
 ```
 
