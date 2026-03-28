@@ -172,36 +172,38 @@ public class TruffleRushApp extends Application {
 
                 // --- Weather tick ---
                 weatherSystem.tick();
-                boolean isRain = weatherSystem.getCurrentWeather() == Weather.RAIN;
-                boolean isFog  = weatherSystem.getCurrentWeather() == Weather.FOG;
+                boolean isFog = weatherSystem.getCurrentWeather() == Weather.FOG;
+
+                // --- Apply weather speed multiplier to all pigs (interpolated during transitions) ---
+                double weatherSpeed = weatherSystem.getSpeedMultiplier();
+                // Fog halves AI recompute frequency by halving their external speed mult
+                // (AIPig uses this to scale its recomputeInterval effectively)
+                double aiWeatherSpeed = isFog ? weatherSpeed * 0.5 : weatherSpeed;
+                player.setExternalSpeedMult(weatherSpeed);
+                dumb.setExternalSpeedMult(aiWeatherSpeed);
+                cunning.setExternalSpeedMult(aiWeatherSpeed);
+                ruthless.setExternalSpeedMult(aiWeatherSpeed);
+
+                // --- Capture previous positions for collision resolution ---
+                int prevPC = player.getCol(), prevPR = player.getRow();
+                int prevDC = dumb.getCol(),    prevDR = dumb.getRow();
+                int prevCC = cunning.getCol(), prevCR = cunning.getRow();
+                int prevRC = ruthless.getCol(), prevRR = ruthless.getRow();
 
                 // --- Player movement ---
-                int prevPC = player.getCol(), prevPR = player.getRow();
                 if (heldDirection != Direction.NONE) {
                     player.tryMove(heldDirection, map, now);
                 }
                 player.updateSniff(now);
 
-                // --- AI ticks (rain: AI moves at half speed) ---
-                boolean tickAI = !isRain || (spawnAccum[0] % 2 == 0);
-                if (tickAI) {
-                    // Fog: halve AI recompute frequency by skipping every other AI tick
-                    boolean fogSkip = isFog && (spawnAccum[0] % 2 == 0);
+                // --- AI ticks ---
+                dumb.tick(map, allPigs);
+                cunning.tick(map, allPigs);
+                ruthless.tick(map, allPigs);
 
-                    int prevDC = dumb.getCol(),    prevDR = dumb.getRow();
-                    int prevCC = cunning.getCol(), prevCR = cunning.getRow();
-                    int prevRC = ruthless.getCol(), prevRR = ruthless.getRow();
-
-                    if (!fogSkip) {
-                        dumb.tick(map, allPigs);
-                        cunning.tick(map, allPigs);
-                        ruthless.tick(map, allPigs);
-                    }
-
-                    // Collision resolution
-                    resolveCollisions(allPigs, prevPC, prevPR,
-                        prevDC, prevDR, prevCC, prevCR, prevRC, prevRR);
-                }
+                // --- Collision resolution (always runs, regardless of weather) ---
+                resolveCollisions(allPigs, prevPC, prevPR,
+                    prevDC, prevDR, prevCC, prevCR, prevRC, prevRR);
                 spawnAccum[0]++;
 
                 // --- Item collection for all pigs ---
@@ -253,15 +255,19 @@ public class TruffleRushApp extends Application {
                 itemSpawner.tick();
 
                 // --- Round end check ---
-                for (Pig pig : allPigs) {
-                    if (pig.getWeight() >= WIN_WEIGHT || t >= ROUND_TICKS) {
-                        roundOver[0] = true;
-                        List<Pig> ranked = new ArrayList<>(allPigs);
-                        ranked.sort(Comparator.comparingDouble(Pig::getWeight).reversed());
-                        roundEndOverlay.show(ranked);
-                        eventBus.publish(GameEvent.ROUND_ENDED, ranked);
-                        return;
+                boolean roundShouldEnd = t >= ROUND_TICKS;
+                if (!roundShouldEnd) {
+                    for (Pig pig : allPigs) {
+                        if (pig.getWeight() >= WIN_WEIGHT) { roundShouldEnd = true; break; }
                     }
+                }
+                if (roundShouldEnd) {
+                    roundOver[0] = true;
+                    List<Pig> ranked = new ArrayList<>(allPigs);
+                    ranked.sort(Comparator.comparingDouble(Pig::getWeight).reversed());
+                    roundEndOverlay.show(ranked);
+                    eventBus.publish(GameEvent.ROUND_ENDED, ranked);
+                    return;
                 }
 
                 // --- Weather render ---
@@ -275,8 +281,9 @@ public class TruffleRushApp extends Application {
                 cunningRenderer.update();
                 ruthlessRenderer.update();
 
-                // --- Item render ---
-                itemRenderer.update(itemSpawner.getItems(), map, allPigs);
+                // --- Item render (sniff reveals bush items within 2 cells) ---
+                itemRenderer.update(itemSpawner.getItems(), map, allPigs,
+                    player.isSniffActive(), player.getCol(), player.getRow());
 
                 // --- Sniff pulse render ---
                 sniffRenderer.update(player.isSniffActive(), player.getCol(), player.getRow());

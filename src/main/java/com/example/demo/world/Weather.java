@@ -21,8 +21,8 @@ public enum Weather {
     /** Grey tint; +20 % spawn rate. */
     OVERCAST (Color.rgb(180, 180, 200, 0.20), 1.2, 1.0,  -1),
 
-    /** Blue-grey tint; additional 50 % speed penalty. */
-    RAIN     (Color.rgb(100, 120, 180, 0.25), 1.0, 0.5,  -1),
+    /** Blue-grey tint; −20 % speed (0.8× multiplier). */
+    RAIN     (Color.rgb(100, 120, 180, 0.25), 1.0, 0.8,  -1),
 
     /** White tint; limits pig visibility to a 4-cell radius. */
     FOG      (Color.rgb(240, 240, 255, 0.35), 1.0, 1.0,   4);

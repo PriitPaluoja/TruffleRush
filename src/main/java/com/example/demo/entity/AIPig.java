@@ -80,8 +80,12 @@ public class AIPig extends Pig {
             currentDirection = behavior.nextMove(this, map, allPigs);
         }
 
-        // Actually move once every MOVE_INTERVAL ticks
-        if (moveTickCounter >= MOVE_INTERVAL) {
+        // Effective move interval scaled by cell (mud pit) and external (weather) speed
+        double cellMult = map.getCell(col, row).getSpeedMultiplier();
+        int effectiveMoveInterval = (int) Math.ceil(MOVE_INTERVAL / (cellMult * externalSpeedMult));
+
+        // Actually move once every effectiveMoveInterval ticks
+        if (moveTickCounter >= effectiveMoveInterval) {
             moveTickCounter = 0;
 
             if (currentDirection != null && currentDirection != Direction.NONE) {

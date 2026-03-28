@@ -81,7 +81,12 @@ public class PlayerPig extends Pig {
     public boolean tryMove(Direction dir, GameMap map, long now) {
         if (dir == Direction.NONE) return false;
 
-        long effectiveDelay = isMudSlowed() ? MOVE_DELAY_NS * 3 : MOVE_DELAY_NS;
+        // Base delay: tripled when mud-slowed by an item debuff
+        long baseDelay = isMudSlowed() ? MOVE_DELAY_NS * 3 : MOVE_DELAY_NS;
+        // Cell speed multiplier: 0.5 when standing on a mud pit (doubles delay)
+        double cellMult = map.getCell(col, row).getSpeedMultiplier();
+        // Combined: weather and cell effects both lengthen the delay
+        long effectiveDelay = (long)(baseDelay / (cellMult * externalSpeedMult));
         if (now - lastMoveTime < effectiveDelay) return false;
 
         int targetCol = col + dir.dc;

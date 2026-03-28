@@ -39,6 +39,12 @@ public class Pig {
      */
     protected int mudSlowTicks;
 
+    /**
+     * External speed multiplier set by the game loop (e.g. from weather).
+     * Values &lt; 1.0 slow the pig; 1.0 = no effect.
+     */
+    protected double externalSpeedMult = 1.0;
+
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
@@ -172,6 +178,13 @@ public class Pig {
     // -------------------------------------------------------------------------
     // Getters
     // -------------------------------------------------------------------------
+
+    /** Sets the external speed multiplier (e.g. from weather). */
+    public void setExternalSpeedMult(double mult) {
+        this.externalSpeedMult = Math.max(0.01, mult);
+    }
+
+    public double getExternalSpeedMult() { return externalSpeedMult; }
 
     public int getCol()          { return col; }
     public int getRow()          { return row; }

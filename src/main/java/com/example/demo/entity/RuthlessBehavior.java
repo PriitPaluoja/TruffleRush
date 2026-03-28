@@ -75,17 +75,20 @@ public class RuthlessBehavior implements PigBehavior {
             }
         }
 
-        // Golden Truffle special rule: if target is set and we're not the heaviest, race to it
+        // Golden Truffle special rule
         if (goldenTruffleCol != -1 && goldenTruffleRow != -1) {
             if (!isHeaviest(self, allPigs)) {
+                // Not heaviest: race directly to the Golden Truffle
                 List<Direction> path = BFS.findPath(
-                        map,
-                        self.getCol(), self.getRow(),
-                        goldenTruffleCol, goldenTruffleRow,
-                        blockedCells
-                );
-                if (!path.isEmpty()) {
-                    return path.get(0);
+                        map, self.getCol(), self.getRow(),
+                        goldenTruffleCol, goldenTruffleRow, blockedCells);
+                if (!path.isEmpty()) return path.get(0);
+            } else {
+                // IS heaviest: intercept the player's path to the Golden Truffle
+                Pig player = findPlayer(allPigs);
+                if (player != null) {
+                    Direction intercept = computeIntercept(self, player, map, blockedCells);
+                    if (intercept != Direction.NONE) return intercept;
                 }
             }
         }
@@ -146,6 +149,49 @@ public class RuthlessBehavior implements PigBehavior {
         }
 
         return bestItem;
+    }
+
+    /**
+     * Returns the player pig (named "Player") from the list, or {@code null}.
+     */
+    private Pig findPlayer(List<Pig> allPigs) {
+        for (Pig pig : allPigs) {
+            if ("Player".equals(pig.getName())) return pig;
+        }
+        return null;
+    }
+
+    /**
+     * Computes an intercept move: find the player's BFS path to the Golden Truffle,
+     * then move Ruthless toward the cell midway along that path to block it.
+     * Falls back to NONE if no intercept is possible.
+     */
+    private Direction computeIntercept(AIPig self, Pig player, GameMap map, List<int[]> blocked) {
+        // Compute the player's path to the golden truffle
+        List<Direction> playerPath = BFS.findPath(
+                map, player.getCol(), player.getRow(),
+                goldenTruffleCol, goldenTruffleRow, Collections.emptyList());
+
+        if (playerPath.isEmpty()) {
+            // Player has no path; just race to the truffle ourselves
+            List<Direction> path = BFS.findPath(
+                    map, self.getCol(), self.getRow(),
+                    goldenTruffleCol, goldenTruffleRow, blocked);
+            return path.isEmpty() ? Direction.NONE : path.get(0);
+        }
+
+        // Pick the cell halfway along the player's path as our intercept target
+        int interceptStep = Math.min(playerPath.size() - 1, playerPath.size() / 2);
+        int ic = player.getCol();
+        int ir = player.getRow();
+        for (int i = 0; i <= interceptStep; i++) {
+            Direction d = playerPath.get(i);
+            ic += d.dc;
+            ir += d.dr;
+        }
+
+        List<Direction> path = BFS.findPath(map, self.getCol(), self.getRow(), ic, ir, blocked);
+        return path.isEmpty() ? Direction.NONE : path.get(0);
     }
 
     /**

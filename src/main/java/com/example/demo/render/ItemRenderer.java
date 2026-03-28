@@ -45,13 +45,18 @@ public class ItemRenderer {
      * Clears the group and redraws visible uncollected items at their grid positions.
      *
      * <p>Items on BUSH cells are hidden unless at least one pig is adjacent
-     * (Manhattan distance &lt;= 1) to the item's grid position.
+     * (Manhattan distance &lt;= 1), OR the player's sniff is active and the item
+     * is within 2 cells of the player.
      *
-     * @param items the full item list from {@code ItemSpawner.getItems()}
-     * @param map   the game map used to check cell obstacles
-     * @param pigs  all pigs whose proximity reveals bush-hidden items
+     * @param items       the full item list from {@code ItemSpawner.getItems()}
+     * @param map         the game map used to check cell obstacles
+     * @param pigs        all pigs whose proximity reveals bush-hidden items
+     * @param sniffActive whether the player's sniff ability is currently active
+     * @param sniffCol    player column (used for sniff reveal radius)
+     * @param sniffRow    player row (used for sniff reveal radius)
      */
-    public void update(List<Item> items, GameMap map, List<Pig> pigs) {
+    public void update(List<Item> items, GameMap map, List<Pig> pigs,
+                       boolean sniffActive, int sniffCol, int sniffRow) {
         group.getChildren().clear();
         for (Item item : items) {
             if (item.isCollected()) continue;
@@ -62,16 +67,18 @@ public class ItemRenderer {
             // Check whether this item sits on a BUSH cell
             Obstacle obs = map.getCell(itemCol, itemRow).getObstacle();
             if (obs == Obstacle.BUSH) {
-                // Only render if a pig is adjacent (Manhattan distance <= 1)
-                boolean pigNearby = false;
+                // Reveal if any pig is adjacent (distance <= 1)
+                boolean revealed = false;
                 for (Pig pig : pigs) {
                     int dist = Math.abs(pig.getCol() - itemCol) + Math.abs(pig.getRow() - itemRow);
-                    if (dist <= 1) {
-                        pigNearby = true;
-                        break;
-                    }
+                    if (dist <= 1) { revealed = true; break; }
                 }
-                if (!pigNearby) continue;
+                // Also reveal if player sniff is active and item is within 2 cells
+                if (!revealed && sniffActive) {
+                    int sniffDist = Math.abs(sniffCol - itemCol) + Math.abs(sniffRow - itemRow);
+                    if (sniffDist <= 2) revealed = true;
+                }
+                if (!revealed) continue;
             }
 
             Group shape = buildShape(item.getType());
