@@ -114,7 +114,8 @@ public class HudRenderer {
                        List<Pig> pigs,
                        String weatherName,
                        boolean sniffReady,
-                       double sniffCooldownSeconds) {
+                       double sniffCooldownSeconds,
+                       boolean sniffActive) {
 
         // --- Ensure we have one Text node per pig ---
         while (pigTexts.size() < pigs.size()) {
@@ -127,10 +128,12 @@ public class HudRenderer {
             group.getChildren().remove(removed);
         }
 
-        // --- Layout: pig weights on the left, weather + timer + sniff on the right ---
+        // --- Layout: fixed columns so pig/weather/timer/sniff never overlap ---
         //
-        // We'll lay out pig texts starting at x = 8, each ~130 px apart.
-        // Weather, timer, and sniff are right-aligned with fixed positions.
+        // Pigs: x=8, each 110px wide  (4 pigs → 8..448)
+        // Weather: x=460
+        // Timer:   x=590
+        // Sniff:   x=700
 
         double x = 8.0;
         for (int i = 0; i < pigs.size(); i++) {
@@ -140,31 +143,34 @@ public class HudRenderer {
             t.setFill(pig.getColor());
             t.setX(x);
             t.setY(TEXT_Y);
-            x += 135.0;
+            x += 110.0;
         }
 
-        // Weather — placed after pig texts with a small gap
+        // Weather — fixed column
         weatherText.setText(weatherName);
-        weatherText.setX(x + 10.0);
+        weatherText.setX(460.0);
         weatherText.setY(TEXT_Y);
 
-        // Timer — right of weather
+        // Timer — fixed column
         int totalSeconds = roundTicksRemaining / 60;
         int minutes      = totalSeconds / 60;
         int seconds      = totalSeconds % 60;
         timerText.setText(String.format("Time: %02d:%02d", minutes, seconds));
-        timerText.setX(mapWidth - 260.0);
+        timerText.setX(590.0);
         timerText.setY(TEXT_Y);
 
-        // Sniff status — far right
-        if (sniffReady) {
+        // Sniff status — fixed column
+        if (sniffActive) {
+            sniffText.setText("Sniff: ACTIVE");
+            sniffText.setFill(Color.rgb(100, 255, 200));
+        } else if (sniffReady) {
             sniffText.setText("Sniff: READY");
             sniffText.setFill(READY_COLOR);
         } else {
             sniffText.setText(String.format("Sniff: %.0fs", sniffCooldownSeconds));
             sniffText.setFill(COOL_COLOR);
         }
-        sniffText.setX(mapWidth - 130.0);
+        sniffText.setX(700.0);
         sniffText.setY(TEXT_Y);
     }
 

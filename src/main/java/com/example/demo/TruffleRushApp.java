@@ -310,7 +310,8 @@ public class TruffleRushApp extends Application {
                 boolean sniffReady   = sniffCooldownNs <= 0;
                 double  sniffSecs    = sniffReady ? 0.0 : sniffCooldownNs / 1_000_000_000.0;
                 hudRenderer.update(ROUND_TICKS - t, player, allPigs,
-                    weatherSystem.getCurrentWeather().name(), sniffReady, sniffSecs);
+                    weatherSystem.getCurrentWeather().name(), sniffReady, sniffSecs,
+                    player.isSniffActive());
             }
         };
         activeTimer.start();
