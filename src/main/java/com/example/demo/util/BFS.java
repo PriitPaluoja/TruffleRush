@@ -1,7 +1,6 @@
 package com.example.demo.util;
 
 import com.example.demo.entity.Direction;
-import com.example.demo.item.Item;
 import com.example.demo.world.GameMap;
 
 import java.util.*;
@@ -101,74 +100,8 @@ public final class BFS {
     }
 
     /**
-     * Finds the closest uncollected item from a list, within an optional max BFS distance.
-     *
-     * @param map         the game map
-     * @param fromCol     starting column
-     * @param fromRow     starting row
-     * @param items       list of items to consider
-     * @param maxDistance maximum BFS distance (use Integer.MAX_VALUE for unlimited)
-     * @return the closest uncollected item, or null if none found within range
+     * Encodes (col, row) into a single long for use as a hash key.
      */
-    public static Item findClosestItem(
-            GameMap map,
-            int fromCol, int fromRow,
-            List<Item> items,
-            int maxDistance
-    ) {
-        // Build a quick lookup map of uncollected item positions
-        Map<Long, Item> itemMap = new HashMap<>();
-        for (Item item : items) {
-            if (!item.isCollected()) {
-                itemMap.put(encodeCell(item.getCol(), item.getRow()), item);
-            }
-        }
-
-        if (itemMap.isEmpty()) {
-            return null;
-        }
-
-        int cols = map.getColumns();
-        int rows = map.getRows();
-
-        boolean[][] visited = new boolean[cols][rows];
-        // Queue entries: {col, row, distance}
-        Queue<int[]> queue = new ArrayDeque<>();
-        visited[fromCol][fromRow] = true;
-        queue.add(new int[]{fromCol, fromRow, 0});
-
-        while (!queue.isEmpty()) {
-            int[] current = queue.poll();
-            int c = current[0];
-            int r = current[1];
-            int dist = current[2];
-
-            if (dist > maxDistance) {
-                break;
-            }
-
-            Item found = itemMap.get(encodeCell(c, r));
-            if (found != null) {
-                return found;
-            }
-
-            for (Direction dir : new Direction[]{Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT}) {
-                int nc = c + dir.dc;
-                int nr = r + dir.dr;
-
-                if (!map.isInBounds(nc, nr)) continue;
-                if (!map.isPassable(nc, nr)) continue;
-                if (visited[nc][nr]) continue;
-
-                visited[nc][nr] = true;
-                queue.add(new int[]{nc, nr, dist + 1});
-            }
-        }
-
-        return null;
-    }
-
-    /** Encodes (col, row) into a single long for use as a hash key. */
     private static long encodeCell(int col, int row) {
         return ((long) col << 16) | (row & 0xFFFF);
     }

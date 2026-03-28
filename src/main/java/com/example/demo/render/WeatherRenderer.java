@@ -59,6 +59,15 @@ public class WeatherRenderer {
 
     private final Random random = new Random();
 
+    // --- Rain drop pool (persistent across frames for smooth animation) ---
+    private static final int RAIN_DROP_COUNT = 100;
+    private static final double RAIN_FALL_SPEED = 8.0;   // px per tick
+    private static final double RAIN_DRIFT      = 2.5;   // px horizontal drift per tick
+    private double[] rainX;
+    private double[] rainY;
+    private double[] rainLen;
+    private boolean  rainInitialized = false;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -141,17 +150,9 @@ public class WeatherRenderer {
     }
 
     /**
-     * Replaces all rain lines each frame.
-     * When {@code raining} is {@code false}, the rain group is cleared.
-     * When {@code true}, 15–20 new diagonal {@link Line} objects are added.
-     *
-     * <p>Each line:</p>
-     * <ul>
-     *   <li>Starts at a random position within the map</li>
-     *   <li>Has a diagonal displacement of dx ∈ [+5, +10] and dy ∈ [+15, +25]</li>
-     *   <li>Is coloured light-blue at 40 % opacity</li>
-     *   <li>Has a stroke width between 1.0 and 1.5 px</li>
-     * </ul>
+     * Animates a persistent pool of rain drops that fall diagonally each tick.
+     * When {@code raining} is {@code false}, the rain group is cleared and the
+     * pool is reset so the next rain starts fresh.
      *
      * @param raining whether rain lines should be drawn this frame
      */
@@ -159,20 +160,42 @@ public class WeatherRenderer {
         rainGroup.getChildren().clear();
 
         if (!raining) {
+            rainInitialized = false;
             return;
         }
 
-        int count = 15 + random.nextInt(6); // 15..20
-        for (int i = 0; i < count; i++) {
-            double x1 = random.nextDouble() * mapWidth;
-            double y1 = random.nextDouble() * mapHeight;
+        // Initialize pool on first rain tick
+        if (!rainInitialized) {
+            rainX   = new double[RAIN_DROP_COUNT];
+            rainY   = new double[RAIN_DROP_COUNT];
+            rainLen = new double[RAIN_DROP_COUNT];
+            for (int i = 0; i < RAIN_DROP_COUNT; i++) {
+                rainX[i]   = random.nextDouble() * mapWidth;
+                rainY[i]   = random.nextDouble() * mapHeight;
+                rainLen[i] = 14.0 + random.nextDouble() * 12.0; // [14, 26] px
+            }
+            rainInitialized = true;
+        }
 
-            double dx = 5.0  + random.nextDouble() * 5.0;   // [5, 10]
-            double dy = 15.0 + random.nextDouble() * 10.0;  // [15, 25]
+        // Advance each drop and draw
+        for (int i = 0; i < RAIN_DROP_COUNT; i++) {
+            rainX[i] += RAIN_DRIFT;
+            rainY[i] += RAIN_FALL_SPEED;
 
-            Line line = new Line(x1, y1, x1 + dx, y1 + dy);
-            line.setStroke(Color.rgb(150, 180, 255, 0.4));
-            line.setStrokeWidth(1.0 + random.nextDouble() * 0.5); // [1.0, 1.5]
+            // Wrap around when a drop falls off screen
+            if (rainY[i] > mapHeight) {
+                rainY[i] = -rainLen[i];
+                rainX[i] = random.nextDouble() * mapWidth;
+            }
+            if (rainX[i] > mapWidth) {
+                rainX[i] -= mapWidth;
+            }
+
+            double len = rainLen[i];
+            Line line = new Line(rainX[i], rainY[i],
+                                 rainX[i] + len * 0.3, rainY[i] + len);
+            line.setStroke(Color.rgb(170, 200, 255, 0.55));
+            line.setStrokeWidth(1.5);
             rainGroup.getChildren().add(line);
         }
     }
