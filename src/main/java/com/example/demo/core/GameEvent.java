@@ -24,5 +24,20 @@ public enum GameEvent {
     GOLDEN_TRUFFLE_SPAWNED,
 
     /** Fired when the current game round finishes. */
-    ROUND_ENDED
+    ROUND_ENDED,
+
+    /** Fired when the player's score changes. */
+    SCORE_CHANGED,
+
+    /** Fired when a level is completed successfully. */
+    LEVEL_COMPLETE,
+
+    /** Fired when the player loses (weight min, wolf, farmer, last place). */
+    GAME_OVER,
+
+    /** Fired when a random event starts. */
+    RANDOM_EVENT_STARTED,
+
+    /** Fired when a random event ends. */
+    RANDOM_EVENT_ENDED
 }

@@ -91,13 +91,13 @@ public class RoundEndOverlay {
         backdrop = new Rectangle(0, 0, mapWidth, mapHeight);
         backdrop.setFill(Color.rgb(0, 0, 0, 0.72));
 
-        // "ROUND OVER" title
-        titleText = new Text("ROUND OVER");
+        // "LEVEL COMPLETE!" title
+        titleText = new Text("LEVEL COMPLETE!");
         titleText.setFont(Font.font("System", FontWeight.BOLD, TITLE_FONT_SIZE));
         titleText.setFill(TITLE_COLOR);
         titleText.setTextAlignment(TextAlignment.CENTER);
 
-        // "Play Again" button
+        // "Next Level" button
         double btnW = 180, btnH = 44;
         playAgainBg = new Rectangle(
             (mapWidth - btnW) / 2.0, mapHeight - 80, btnW, btnH);
@@ -107,7 +107,7 @@ public class RoundEndOverlay {
         playAgainBg.setArcWidth(12);
         playAgainBg.setArcHeight(12);
 
-        playAgainText = new Text("Play Again");
+        playAgainText = new Text("Next Level");
         playAgainText.setFont(Font.font("System", FontWeight.BOLD, 20));
         playAgainText.setFill(Color.WHITE);
         double labelW = playAgainText.getText().length() * 20 * 0.55;

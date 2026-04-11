@@ -109,8 +109,12 @@ public class ItemRenderer {
             case DIET_PILL:       return buildDietPill();
             case MUD_SPLASH:      return buildMudSplash();
             case GOLDEN_TRUFFLE:  return buildGoldenTruffle();
+            case SPEED_MUSHROOM:  return buildSpeedMushroom();
+            case SHIELD_ACORN:    return buildShieldAcorn();
+            case MAGNET_TRUFFLE:  return buildMagnetTruffle();
+            case DECOY_MUSHROOM:  return buildDecoyMushroom();
+            case SUPER_ACORN:     return buildSuperAcorn();
             default:
-                // Fallback: generic small grey circle
                 Circle fallback = new Circle(0, 0, 6, Color.GREY);
                 return new Group(fallback);
         }
@@ -235,6 +239,70 @@ public class ItemRenderer {
         hex.setStroke(Color.rgb(200, 140, 0));
         hex.setStrokeWidth(1.5);
         return new Group(hex);
+    }
+
+    // ------------------------------------------------------------------
+    // SPEED_MUSHROOM — blue circle cap + stem
+    // ------------------------------------------------------------------
+    private static Group buildSpeedMushroom() {
+        Circle cap = new Circle(0, -3, 8, Color.rgb(60, 120, 255));
+        cap.setStroke(Color.rgb(30, 70, 200));
+        cap.setStrokeWidth(1.0);
+        Rectangle stem = new Rectangle(-3, 3, 6, 6);
+        stem.setFill(Color.rgb(180, 200, 255));
+        stem.setStroke(Color.rgb(30, 70, 200));
+        stem.setStrokeWidth(0.8);
+        return new Group(stem, cap);
+    }
+
+    // ------------------------------------------------------------------
+    // SHIELD_ACORN — gold circle with outer ring
+    // ------------------------------------------------------------------
+    private static Group buildShieldAcorn() {
+        Circle outer = new Circle(0, 0, 9, Color.TRANSPARENT);
+        outer.setStroke(Color.rgb(100, 200, 100));
+        outer.setStrokeWidth(2.0);
+        Circle inner = new Circle(0, 0, 6, Color.rgb(255, 215, 0));
+        inner.setStroke(Color.rgb(200, 160, 0));
+        inner.setStrokeWidth(1.0);
+        return new Group(outer, inner);
+    }
+
+    // ------------------------------------------------------------------
+    // MAGNET_TRUFFLE — purple hexagon
+    // ------------------------------------------------------------------
+    private static Group buildMagnetTruffle() {
+        Polygon hex = regularHexagon(9, Color.rgb(160, 50, 220));
+        hex.setStroke(Color.rgb(100, 20, 160));
+        hex.setStrokeWidth(1.0);
+        return new Group(hex);
+    }
+
+    // ------------------------------------------------------------------
+    // DECOY_MUSHROOM — orange circle cap + stem
+    // ------------------------------------------------------------------
+    private static Group buildDecoyMushroom() {
+        Circle cap = new Circle(0, -3, 8, Color.rgb(255, 160, 40));
+        cap.setStroke(Color.rgb(200, 100, 0));
+        cap.setStrokeWidth(1.0);
+        Rectangle stem = new Rectangle(-3, 3, 6, 6);
+        stem.setFill(Color.rgb(255, 200, 130));
+        stem.setStroke(Color.rgb(200, 100, 0));
+        stem.setStrokeWidth(0.8);
+        return new Group(stem, cap);
+    }
+
+    // ------------------------------------------------------------------
+    // SUPER_ACORN — golden glowing circle
+    // ------------------------------------------------------------------
+    private static Group buildSuperAcorn() {
+        Circle glow = new Circle(0, 0, 12, Color.rgb(255, 215, 0, 0.3));
+        Circle nut = new Circle(0, 0, 7, Color.rgb(255, 200, 0));
+        nut.setStroke(Color.rgb(200, 140, 0));
+        nut.setStrokeWidth(1.5);
+        Ellipse cap = new Ellipse(0, -5, 5, 3);
+        cap.setFill(Color.rgb(200, 140, 0));
+        return new Group(glow, nut, cap);
     }
 
     // -------------------------------------------------------------------------

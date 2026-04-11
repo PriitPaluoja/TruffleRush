@@ -45,13 +45,20 @@ public class Pig {
      */
     protected double externalSpeedMult = 1.0;
 
+    /** Stun state — stunned pigs cannot move. */
+    protected boolean stunned;
+    protected int stunTicks;
+
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
 
     private static final double WEIGHT_INITIAL = 50.0;
     private static final double WEIGHT_MIN     = 10.0;
-    private static final double WEIGHT_DECAY   = 0.008;
+    private static final double DEFAULT_WEIGHT_DECAY = 0.008;
+
+    /** Configurable decay rate (can be increased for harder levels). */
+    protected double weightDecayRate = DEFAULT_WEIGHT_DECAY;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -84,7 +91,12 @@ public class Pig {
      * clamping the result to the minimum weight.
      */
     public void applyDecay() {
-        weight = Math.max(WEIGHT_MIN, weight - WEIGHT_DECAY);
+        weight = Math.max(WEIGHT_MIN, weight - weightDecayRate);
+    }
+
+    /** Sets the weight decay rate per tick. */
+    public void setWeightDecayRate(double rate) {
+        this.weightDecayRate = rate;
     }
 
     /**
@@ -185,6 +197,18 @@ public class Pig {
     }
 
     public double getExternalSpeedMult() { return externalSpeedMult; }
+
+    /** Stuns the pig for the given number of ticks. */
+    public void stun(int ticks) { this.stunned = true; this.stunTicks = ticks; }
+
+    /** Returns true if the pig is currently stunned. */
+    public boolean isStunned() { return stunned; }
+
+    /** Decrements stun timer. Call once per tick. */
+    public void tickStun() {
+        if (stunTicks > 0) stunTicks--;
+        if (stunTicks <= 0) stunned = false;
+    }
 
     public int getCol()          { return col; }
     public int getRow()          { return row; }

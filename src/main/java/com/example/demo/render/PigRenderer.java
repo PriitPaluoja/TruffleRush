@@ -1,7 +1,10 @@
 package com.example.demo.render;
 
 import com.example.demo.entity.Pig;
+import com.example.demo.entity.PlayerPig;
 import javafx.scene.Group;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 
 /**
  * Manages the JavaFX scene-graph node that visually represents a {@link Pig}.
@@ -91,6 +94,44 @@ public class PigRenderer {
             // we also do a full children-replace here.
             Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, pig.getFacing());
             pigGroup.getChildren().setAll(newShape.getChildren());
+        }
+
+        // Power-up aura effects (only for PlayerPig)
+        if (pig instanceof PlayerPig pp) {
+            if (pp.isSuperPig()) {
+                Circle glow = new Circle(0, 0, currentRadius + 8);
+                glow.setFill(Color.rgb(255, 215, 0, 0.25));
+                glow.setStroke(Color.rgb(255, 200, 0, 0.6));
+                glow.setStrokeWidth(2);
+                pigGroup.getChildren().addFirst(glow);
+            } else if (pp.hasSpeedBoost()) {
+                Circle glow = new Circle(0, 0, currentRadius + 6);
+                glow.setFill(Color.rgb(60, 120, 255, 0.2));
+                glow.setStroke(Color.rgb(80, 140, 255, 0.5));
+                glow.setStrokeWidth(1.5);
+                pigGroup.getChildren().addFirst(glow);
+            }
+            if (pp.hasShield()) {
+                Circle shield = new Circle(0, 0, currentRadius + 5);
+                shield.setFill(Color.TRANSPARENT);
+                shield.setStroke(Color.rgb(100, 255, 100, 0.7));
+                shield.setStrokeWidth(2);
+                pigGroup.getChildren().add(shield);
+            }
+            if (pp.hasMagnet()) {
+                Circle magnet = new Circle(0, 0, currentRadius + 7);
+                magnet.setFill(Color.TRANSPARENT);
+                magnet.setStroke(Color.rgb(160, 50, 220, 0.5));
+                magnet.setStrokeWidth(1.5);
+                pigGroup.getChildren().add(magnet);
+            }
+        }
+
+        // Stun visual
+        if (pig.isStunned()) {
+            pigGroup.setOpacity(0.5);
+        } else {
+            pigGroup.setOpacity(1.0);
         }
 
         repositionGroup();

@@ -25,6 +25,7 @@ import java.util.Random;
 public class MapGenerator {
 
     private final long seed;
+    private final double densityMultiplier;
 
     /**
      * Creates a generator that will use the given seed for reproducible maps.
@@ -32,7 +33,18 @@ public class MapGenerator {
      * @param seed the initial random seed
      */
     public MapGenerator(long seed) {
+        this(seed, 1.0);
+    }
+
+    /**
+     * Creates a generator with the given seed and obstacle density multiplier.
+     *
+     * @param seed              the initial random seed
+     * @param densityMultiplier scales obstacle counts (1.0 = default, 1.5 = 50% more)
+     */
+    public MapGenerator(long seed, double densityMultiplier) {
         this.seed = seed;
+        this.densityMultiplier = densityMultiplier;
     }
 
     // -------------------------------------------------------------------------
@@ -108,7 +120,7 @@ public class MapGenerator {
     // --- Rocks ----------------------------------------------------------------
 
     private void placeRocks(GameMap map, Random rng) {
-        int count = 15 + rng.nextInt(6); // 15-20
+        int count = (int) ((21 + rng.nextInt(8)) * densityMultiplier); // 21-28 scaled
         for (int i = 0; i < count; i++) {
             int col = rng.nextInt(GameMap.COLS);
             int row = rng.nextInt(GameMap.ROWS);
@@ -120,7 +132,7 @@ public class MapGenerator {
 
     /** Places bushes in small clusters of 2-3 adjacent cells. */
     private void placeBushes(GameMap map, Random rng) {
-        int clusters = 8 + rng.nextInt(5); // 8-12 bushes across several clusters
+        int clusters = (int) ((11 + rng.nextInt(7)) * densityMultiplier); // 11-17 scaled
         int placed = 0;
         int attempts = 0;
 
@@ -163,7 +175,7 @@ public class MapGenerator {
 
     /** Scatters mud pits with a preference for the middle of the map. */
     private void placeMudPits(GameMap map, Random rng) {
-        int count = 5 + rng.nextInt(4); // 5-8
+        int count = (int) ((7 + rng.nextInt(5)) * densityMultiplier); // 7-11 scaled
 
         int midColMin = GameMap.COLS / 4;
         int midColMax = GameMap.COLS * 3 / 4;
@@ -191,7 +203,7 @@ public class MapGenerator {
      * single horizontal or vertical line.
      */
     private void placeFences(GameMap map, Random rng) {
-        int corridors = 3 + rng.nextInt(3); // 3-5 corridors → 10-15 total segments
+        int corridors = (int) ((4 + rng.nextInt(4)) * densityMultiplier); // 4-7 scaled
 
         for (int i = 0; i < corridors; i++) {
             boolean horizontal = rng.nextBoolean();

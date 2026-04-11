@@ -2,6 +2,7 @@ package com.example.demo.render;
 
 import com.example.demo.entity.Pig;
 import com.example.demo.entity.PlayerPig;
+import java.util.StringJoiner;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
@@ -55,6 +56,7 @@ public class HudRenderer {
     private final Text weatherText;
     private final Text timerText;
     private final Text sniffText;
+    private final Text powerUpText;
 
     private final int mapWidth;
 
@@ -83,7 +85,10 @@ public class HudRenderer {
         // Sniff status
         sniffText = makeText("", READY_COLOR);
 
-        group.getChildren().addAll(background, weatherText, timerText, sniffText);
+        // Active power-ups
+        powerUpText = makeText("", Color.rgb(255, 215, 0));
+
+        group.getChildren().addAll(background, weatherText, timerText, sniffText, powerUpText);
     }
 
     // -------------------------------------------------------------------------
@@ -148,7 +153,7 @@ public class HudRenderer {
 
         // Weather — fixed column
         weatherText.setText(weatherName);
-        weatherText.setX(460.0);
+        weatherText.setX(560.0);
         weatherText.setY(TEXT_Y);
 
         // Timer — fixed column
@@ -156,7 +161,7 @@ public class HudRenderer {
         int minutes      = totalSeconds / 60;
         int seconds      = totalSeconds % 60;
         timerText.setText(String.format("Time: %02d:%02d", minutes, seconds));
-        timerText.setX(590.0);
+        timerText.setX(700.0);
         timerText.setY(TEXT_Y);
 
         // Sniff status — fixed column
@@ -170,8 +175,19 @@ public class HudRenderer {
             sniffText.setText(String.format("Sniff: %.0fs", sniffCooldownSeconds));
             sniffText.setFill(COOL_COLOR);
         }
-        sniffText.setX(700.0);
+        sniffText.setX(850.0);
         sniffText.setY(TEXT_Y);
+
+        // Power-up status (far right, wraps if needed)
+        StringJoiner powers = new StringJoiner(" ");
+        if (player.isSuperPig())    powers.add("★SUPER(" + player.getSuperPigTicks() / 60 + "s)");
+        if (player.hasSpeedBoost()) powers.add("⚡SPD(" + player.getSpeedBoostTicks() / 60 + "s)");
+        if (player.hasShield())     powers.add("🛡SHLD");
+        if (player.hasMagnet())     powers.add("◎MAG(" + player.getMagnetTicks() / 60 + "s)");
+        powerUpText.setText(powers.toString());
+        powerUpText.setX(955.0);
+        powerUpText.setY(TEXT_Y);
+        powerUpText.setFill(player.isSuperPig() ? Color.rgb(255, 215, 0) : Color.rgb(100, 200, 255));
     }
 
     // -------------------------------------------------------------------------

@@ -9,8 +9,8 @@ package com.example.demo.item;
 public class Item {
 
     private final ItemType type;
-    private final int col;
-    private final int row;
+    private int col;
+    private int row;
     private boolean collected;
 
     /**
@@ -52,5 +52,11 @@ public class Item {
      */
     public void collect() {
         collected = true;
+    }
+
+    /** Moves this item to a new grid position (used by magnet pull). */
+    public void setPosition(int col, int row) {
+        this.col = col;
+        this.row = row;
     }
 }

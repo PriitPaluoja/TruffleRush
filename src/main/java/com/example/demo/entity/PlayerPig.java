@@ -30,22 +30,19 @@ public class PlayerPig extends Pig {
      * Cooldown between sniffs: 8 seconds.
      */
     public static final long SNIFF_COOLDOWN_NS = 8_000_000_000L;
-    /**
-     * Timestamp (nanoTime) of the last accepted move.
-     */
     private long lastMoveTime;
-    /**
-     * Whether the sniff ability is currently active.
-     */
     private boolean sniffActive;
-    /**
-     * Timestamp (nanoTime) at which the active sniff expires.
-     */
     private long sniffEndTime;
-    /**
-     * Timestamp (nanoTime) before which sniff cannot be re-activated.
-     */
     private long sniffCooldownEnd;
+
+    // --- Power-ups ---
+    private int speedBoostTicks;
+    private boolean hasShield;
+    private int magnetTicks;
+    private boolean superPigActive;
+    private int superPigTicks;
+    private boolean stunned;
+    private int stunTicks;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -89,8 +86,10 @@ public class PlayerPig extends Pig {
     public boolean tryMove(Direction dir, GameMap map, long now) {
         if (dir == Direction.NONE) return false;
 
-        // Base delay: tripled when mud-slowed by an item debuff
+        if (stunned) return false;
+        // Base delay: tripled when mud-slowed, halved when speed-boosted
         long baseDelay = isMudSlowed() ? MOVE_DELAY_NS * 3 : MOVE_DELAY_NS;
+        if (speedBoostTicks > 0 || superPigActive) baseDelay /= 2;
         // Cell speed multiplier: 0.5 when standing on a mud pit (doubles delay)
         double cellMult = map.getCell(col, row).getSpeedMultiplier();
         // Combined: weather and cell effects both lengthen the delay
@@ -138,6 +137,45 @@ public class PlayerPig extends Pig {
             sniffActive = false;
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Power-ups
+    // -------------------------------------------------------------------------
+
+    public void activateSpeedBoost(int ticks) { this.speedBoostTicks = ticks; }
+    public void activateShield() { this.hasShield = true; }
+    public boolean consumeShield() {
+        if (hasShield) { hasShield = false; return true; }
+        return false;
+    }
+    public void activateMagnet(int ticks) { this.magnetTicks = ticks; }
+    public void activateSuperPig(int ticks) {
+        this.superPigActive = true;
+        this.superPigTicks = ticks;
+    }
+
+    public void tickPowerUps() {
+        if (speedBoostTicks > 0) speedBoostTicks--;
+        if (magnetTicks > 0) magnetTicks--;
+        if (superPigTicks > 0) {
+            superPigTicks--;
+            if (superPigTicks <= 0) superPigActive = false;
+        }
+        if (stunTicks > 0) stunTicks--;
+        if (stunTicks <= 0) stunned = false;
+    }
+
+    public void stun(int ticks) { this.stunned = true; this.stunTicks = ticks; }
+    public boolean isStunned() { return stunned; }
+
+    public boolean hasSpeedBoost() { return speedBoostTicks > 0; }
+    public boolean hasShield() { return hasShield; }
+    public boolean hasMagnet() { return magnetTicks > 0; }
+    public boolean isSuperPig() { return superPigActive; }
+    public int getSpeedBoostTicks() { return speedBoostTicks; }
+    public int getShieldTicks() { return hasShield ? 1 : 0; }
+    public int getMagnetTicks() { return magnetTicks; }
+    public int getSuperPigTicks() { return superPigTicks; }
 
     // -------------------------------------------------------------------------
     // Getters

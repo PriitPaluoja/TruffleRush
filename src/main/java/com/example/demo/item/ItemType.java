@@ -20,8 +20,13 @@ public enum ItemType {
     ACORN          ( +1,  30, false, "small circle, brown"),
     CELERY         ( -5,  15, true,  "thin rectangle, green"),
     DIET_PILL      (-10,   3, true,  "small rectangle, white/red"),
-    MUD_SPLASH     (  0,   8, true,  "ellipse, brown"),   // slows pig temporarily
-    GOLDEN_TRUFFLE (+30,   0, false, "polygon, gold");    // spawned separately, not by ItemSpawner
+    MUD_SPLASH     (  0,   8, true,  "ellipse, brown"),        // slows pig temporarily
+    GOLDEN_TRUFFLE (+30,   0, false, "polygon, gold"),       // spawned separately
+    SPEED_MUSHROOM (  0,   5, false, "circle, blue"),        // 2x speed for 5 seconds
+    SHIELD_ACORN   (  0,   3, false, "circle, gold ring"),   // blocks next negative hit
+    MAGNET_TRUFFLE (  0,   2, false, "hexagon, purple"),     // pulls nearby items for 6s
+    DECOY_MUSHROOM (  0,   4, false, "circle, orange"),      // fake golden truffle lures AI
+    SUPER_ACORN    ( +5,   0, false, "circle, golden glow"); // triggers super pig mode
 
     /** Weight change applied to the pig when this item is collected. */
     public final int weightDelta;

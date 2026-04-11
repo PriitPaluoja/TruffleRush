@@ -10,8 +10,8 @@ package com.example.demo.world;
  */
 public class GameMap {
 
-    public static final int COLS      = 20;
-    public static final int ROWS      = 15;
+    public static final int COLS      = 25;
+    public static final int ROWS      = 17;
     public static final int TILE_SIZE = 40;
 
     private final Cell[][] cells;

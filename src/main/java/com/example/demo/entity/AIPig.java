@@ -28,8 +28,8 @@ public class AIPig extends Pig {
     /** The strategy that decides where this pig moves. */
     private final PigBehavior behavior;
 
-    /** Number of ticks between actual moves (4 moves/sec at 60 ticks/sec). */
-    private static final int MOVE_INTERVAL = 15;
+    /** Number of ticks between actual moves (default: 4 moves/sec at 60 ticks/sec). */
+    private int moveInterval = 15;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -72,6 +72,7 @@ public class AIPig extends Pig {
      * @param allPigs all pigs in the game (including the player)
      */
     public void tick(GameMap map, List<Pig> allPigs) {
+        if (stunned) return;
         tickCounter++;
         moveTickCounter++;
 
@@ -82,7 +83,7 @@ public class AIPig extends Pig {
 
         // Effective move interval scaled by cell (mud pit) and external (weather) speed
         double cellMult = map.getCell(col, row).getSpeedMultiplier();
-        int effectiveMoveInterval = (int) Math.ceil(MOVE_INTERVAL / (cellMult * externalSpeedMult));
+        int effectiveMoveInterval = (int) Math.ceil(moveInterval / (cellMult * externalSpeedMult));
 
         // Actually move once every effectiveMoveInterval ticks
         if (moveTickCounter >= effectiveMoveInterval) {
@@ -119,5 +120,10 @@ public class AIPig extends Pig {
      */
     public PigBehavior getBehavior() {
         return behavior;
+    }
+
+    /** Sets the base move interval in ticks (lower = faster AI). */
+    public void setMoveInterval(int interval) {
+        this.moveInterval = Math.max(4, interval);
     }
 }
