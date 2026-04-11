@@ -39,7 +39,7 @@ Base package: `com.example.demo`
 ## Game Constants
 - Grid: 25 columns × 17 rows, tile size 40px
 - Game window: 1120×680px (1000px grid + 120px side panel)
-- Level time: `max(5400, 10800 - (level-1) * 900)` ticks — 15s less per level, floor 90s
+- Level time: `max(1800, 3600 - (level-1) * 900)` ticks — starts 1 min, 15s less per level, floor 30s
 - Starting weight: 50.0 kg, minimum: 10.0 kg
 - Weight decay: `0.008 + (level-1) * 0.001` kg/tick
 - AI move interval: `max(8, 15 - level)` ticks

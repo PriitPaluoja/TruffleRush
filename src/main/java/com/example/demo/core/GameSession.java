@@ -41,9 +41,9 @@ public class GameSession {
         }
     }
 
-    /** Round duration in ticks. Decreases 15s per level, floor 1:30. */
+    /** Round duration in ticks. Starts at 1 min, decreases 15s per level, floor 30s. */
     public int getLevelTimeTicks() {
-        return Math.max(5400, 10_800 - (level - 1) * 900);
+        return Math.max(1800, 3_600 - (level - 1) * 900);
     }
 
     /** Weight decay per tick. Increases with level. */
