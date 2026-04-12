@@ -2,8 +2,6 @@ package com.example.demo.entity;
 
 import com.example.demo.world.GameMap;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -25,8 +23,12 @@ public class RandomBehavior implements PigBehavior {
 
     @Override
     public Direction nextMove(AIPig self, GameMap map, List<Pig> allPigs) {
-        List<Direction> dirs = new ArrayList<>(List.of(CARDINALS));
-        Collections.shuffle(dirs, random);
+        Direction[] dirs = CARDINALS.clone();
+        // Fisher-Yates shuffle
+        for (int i = dirs.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            Direction tmp = dirs[i]; dirs[i] = dirs[j]; dirs[j] = tmp;
+        }
 
         for (Direction dir : dirs) {
             int nc = self.getCol() + dir.dc;

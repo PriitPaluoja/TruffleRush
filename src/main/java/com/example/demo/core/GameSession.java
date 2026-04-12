@@ -51,9 +51,9 @@ public class GameSession {
         return 0.008 + (level - 1) * 0.001;
     }
 
-    /** AI base move interval in ticks. Gets faster each level. */
+    /** AI base move interval in ticks. Starts slow on Level 1, gets faster each level. */
     public int getAiMoveInterval() {
-        return Math.max(8, 15 - level);
+        return Math.max(8, 20 - level * 2);
     }
 
     /** Obstacle density multiplier. More obstacles at higher levels. */

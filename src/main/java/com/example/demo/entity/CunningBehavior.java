@@ -16,8 +16,13 @@ import java.util.Random;
  * <p>Uses BFS to find the highest-value visible item (highest positive
  * {@code weightDelta}) and heads towards it.  Hazard items are ignored.
  * Falls back to random movement when no reachable item exists.
+ *
+ * <p>AI pigs have limited vision: they can only "see" items within
+ * {@value #VISION_RADIUS} Manhattan-distance cells.
  */
 public class CunningBehavior implements PigBehavior {
+
+    private static final int VISION_RADIUS = 8;
 
     private final ItemSpawner itemSpawner;
     private final Random random = new Random();
@@ -37,7 +42,7 @@ public class CunningBehavior implements PigBehavior {
 
     @Override
     public Direction nextMove(AIPig self, GameMap map, List<Pig> allPigs) {
-        List<Item> candidates = getPositiveNonHazardItems();
+        List<Item> candidates = getVisiblePositiveItems(self);
 
         if (!candidates.isEmpty()) {
             // Score each item: prefer high value, break ties by proximity
@@ -73,23 +78,31 @@ public class CunningBehavior implements PigBehavior {
     }
 
     /**
-     * Returns uncollected items that are not hazards and have a positive weightDelta.
+     * Returns uncollected positive non-hazard items within vision radius.
      */
-    private List<Item> getPositiveNonHazardItems() {
+    private List<Item> getVisiblePositiveItems(AIPig self) {
         List<Item> result = new ArrayList<>();
         for (Item item : itemSpawner.getItems()) {
             if (!item.isCollected()
                     && !item.getType().isHazard
                     && item.getType().weightDelta > 0) {
-                result.add(item);
+                int dist = Math.abs(item.getCol() - self.getCol())
+                         + Math.abs(item.getRow() - self.getRow());
+                if (dist <= VISION_RADIUS) {
+                    result.add(item);
+                }
             }
         }
         return result;
     }
 
     private Direction randomValidDirection(AIPig self, GameMap map) {
-        List<Direction> dirs = new ArrayList<>(List.of(CARDINALS));
-        Collections.shuffle(dirs, random);
+        Direction[] dirs = CARDINALS.clone();
+        // Fisher-Yates shuffle
+        for (int i = dirs.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            Direction tmp = dirs[i]; dirs[i] = dirs[j]; dirs[j] = tmp;
+        }
 
         for (Direction dir : dirs) {
             int nc = self.getCol() + dir.dc;

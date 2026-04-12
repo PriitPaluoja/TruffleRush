@@ -10,6 +10,8 @@ import java.util.Random;
  * A wolf that spawns at a map edge, chases the nearest pig using BFS.
  * If it catches a pig: AI pigs get stunned and lose weight; player = game over.
  * Flees from the player when player is in super pig mode.
+ *
+ * <p>Wolf speed scales with level: slower on early levels, full speed from level 4+.
  */
 public class Wolf {
 
@@ -21,13 +23,18 @@ public class Wolf {
     private boolean caughtPlayer;
     private Pig caughtPig;
 
-    private static final int MOVE_INTERVAL = 12;
     private static final int MAX_LIFETIME = 600;
+
+    /** Move interval scales by level: Level 2 = 24 ticks (slow), Level 3 = 18, Level 4+ = 12 (full). */
+    private final int moveInterval;
 
     private Direction currentDir = Direction.NONE;
     private int recomputeCounter;
 
-    public Wolf(GameMap map) {
+    public Wolf(GameMap map, int level) {
+        // Scale wolf speed: slower on early levels
+        this.moveInterval = Math.max(12, 30 - level * 6);
+
         Random rng = new Random();
         // Spawn at random edge
         int edge = rng.nextInt(4);
@@ -78,7 +85,7 @@ public class Wolf {
         }
 
         // Move
-        if (tickCounter % MOVE_INTERVAL == 0 && currentDir != Direction.NONE) {
+        if (tickCounter % moveInterval == 0 && currentDir != Direction.NONE) {
             int nc = col + currentDir.dc;
             int nr = row + currentDir.dr;
             if (map.isInBounds(nc, nr) && map.isPassable(nc, nr)) {

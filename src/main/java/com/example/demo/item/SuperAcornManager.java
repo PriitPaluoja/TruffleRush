@@ -6,7 +6,7 @@ import java.util.Random;
 
 /**
  * Manages spawning of the Super Acorn power-up.
- * Spawns once every other level (3, 5, 7...) at a random tick in the middle 40% of the round.
+ * Spawns on levels 2+ at a random tick in the middle 40% of the round.
  */
 public class SuperAcornManager {
 
@@ -21,8 +21,7 @@ public class SuperAcornManager {
     private final Random random = new Random();
 
     public SuperAcornManager(int roundTicks, int level) {
-        // Enabled on odd levels >= 3
-        this.enabled = level >= 3 && level % 2 == 1;
+        this.enabled = level >= 2;
         if (enabled) {
             double start = roundTicks * 0.3;
             double window = roundTicks * 0.4;

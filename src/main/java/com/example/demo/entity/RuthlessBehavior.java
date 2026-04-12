@@ -21,8 +21,13 @@ import java.util.Random;
  *   <li>Golden Truffle special rule: if a Golden Truffle target has been set and
  *       this pig is not the heaviest pig, it races to the Golden Truffle.</li>
  * </ul>
+ *
+ * <p>AI pigs have limited vision: they can only "see" items within
+ * {@value #VISION_RADIUS} Manhattan-distance cells.
  */
 public class RuthlessBehavior implements PigBehavior {
+
+    private static final int VISION_RADIUS = 8;
 
     private final ItemSpawner itemSpawner;
     private final Random random = new Random();
@@ -93,8 +98,8 @@ public class RuthlessBehavior implements PigBehavior {
             }
         }
 
-        // Find the best item (any weightDelta, excluding hazards)
-        Item bestItem = findBestItem();
+        // Find the best visible item (any weightDelta, excluding hazards)
+        Item bestItem = findBestVisibleItem(self);
 
         if (bestItem != null) {
             List<Direction> path = BFS.findPath(
@@ -128,18 +133,19 @@ public class RuthlessBehavior implements PigBehavior {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns the best uncollected non-hazard item on the map.
-     * Considers all weightDelta values (positive and negative are both acceptable
-     * since the ruthless pig wants maximum score gain and may feed opponents hazards).
-     * Sorts by highest absolute weightDelta among positive items first, then any item.
+     * Returns the best uncollected non-hazard item within vision radius.
      */
-    private Item findBestItem() {
+    private Item findBestVisibleItem(AIPig self) {
         Item bestItem = null;
         int bestDelta = Integer.MIN_VALUE;
 
         for (Item item : itemSpawner.getItems()) {
             if (item.isCollected()) continue;
             if (item.getType().isHazard) continue;
+
+            int dist = Math.abs(item.getCol() - self.getCol())
+                     + Math.abs(item.getRow() - self.getRow());
+            if (dist > VISION_RADIUS) continue;
 
             int delta = item.getType().weightDelta;
             if (delta > bestDelta) {
@@ -208,8 +214,12 @@ public class RuthlessBehavior implements PigBehavior {
     }
 
     private Direction randomValidDirection(AIPig self, GameMap map, List<int[]> blockedCells) {
-        List<Direction> dirs = new ArrayList<>(List.of(CARDINALS));
-        Collections.shuffle(dirs, random);
+        Direction[] dirs = CARDINALS.clone();
+        // Fisher-Yates shuffle
+        for (int i = dirs.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            Direction tmp = dirs[i]; dirs[i] = dirs[j]; dirs[j] = tmp;
+        }
 
         for (Direction dir : dirs) {
             int nc = self.getCol() + dir.dc;

@@ -1,5 +1,6 @@
 package com.example.demo.render;
 
+import com.example.demo.entity.Direction;
 import com.example.demo.entity.Pig;
 import com.example.demo.entity.PlayerPig;
 import javafx.scene.Group;
@@ -35,6 +36,9 @@ public class PigRenderer {
     /** Radius used when the current shape group was built; used for change-detection. */
     private double lastRadius;
 
+    /** Facing direction used when the shape group was last built. */
+    private Direction lastFacing;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -48,7 +52,8 @@ public class PigRenderer {
     public PigRenderer(Pig pig) {
         this.pig       = pig;
         this.lastRadius = pig.getRadius();
-        this.pigGroup  = ShapeFactory.createPigShape(pig.getColor(), lastRadius, pig.getFacing());
+        this.lastFacing = pig.getFacing();
+        this.pigGroup  = ShapeFactory.createPigShape(pig.getColor(), lastRadius, lastFacing);
         repositionGroup();
     }
 
@@ -82,18 +87,15 @@ public class PigRenderer {
     public void update() {
         double currentRadius = pig.getRadius();
 
-        if (Math.abs(currentRadius - lastRadius) > RADIUS_REBUILD_THRESHOLD) {
-            // Rebuild the shape children in-place so the group reference
-            // held by the scene graph remains valid.
-            Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, pig.getFacing());
+        Direction currentFacing = pig.getFacing();
+        boolean radiusChanged = Math.abs(currentRadius - lastRadius) > RADIUS_REBUILD_THRESHOLD;
+        boolean facingChanged = currentFacing != lastFacing;
+
+        if (radiusChanged || facingChanged) {
+            Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, currentFacing);
             pigGroup.getChildren().setAll(newShape.getChildren());
             lastRadius = currentRadius;
-        } else {
-            // Only the snout direction may have changed — rebuild cheaply.
-            // For simplicity (and because Direction changes are infrequent)
-            // we also do a full children-replace here.
-            Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, pig.getFacing());
-            pigGroup.getChildren().setAll(newShape.getChildren());
+            lastFacing = currentFacing;
         }
 
         // Power-up aura effects (only for PlayerPig)

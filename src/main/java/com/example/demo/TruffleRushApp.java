@@ -292,7 +292,11 @@ public class TruffleRushApp extends Application {
                             sidePanel.addEvent("Shield blocked " + type.name());
                             continue;
                         }
-                        pig.addWeight(type.weightDelta);
+                        double weightDelta = type.weightDelta;
+                        if (eventMgr.isFrenzyActive()) {
+                            weightDelta *= 2;
+                        }
+                        pig.addWeight(weightDelta);
                         if (type == ItemType.MUD_SPLASH) {
                             pig.applyMudSlow(180);
                         }

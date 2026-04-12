@@ -53,6 +53,12 @@ public class ItemSpawner {
     private final Random  random = new Random();
     private final List<Item> items = new ArrayList<>();
 
+    /** Spatial grid for O(1) item lookup by position. */
+    private final Item[][] itemGrid;
+
+    /** Running count of uncollected items. */
+    private int uncollectedCount;
+
     /** Counts down to zero, then a spawn attempt is made. */
     private int ticksUntilSpawn;
 
@@ -63,6 +69,7 @@ public class ItemSpawner {
      */
     public ItemSpawner(GameMap map) {
         this.map = map;
+        this.itemGrid = new Item[map.getColumns()][map.getRows()];
         this.ticksUntilSpawn = nextSpawnInterval();
     }
 
@@ -96,28 +103,28 @@ public class ItemSpawner {
 
     /**
      * Returns the uncollected item at the given grid position, or {@code null}
-     * if no such item exists.
+     * if no such item exists. O(1) via spatial grid.
      *
      * @param col column index
      * @param row row index
      * @return the item, or {@code null}
      */
     public Item getItemAt(int col, int row) {
-        for (Item item : items) {
-            if (!item.isCollected() && item.getCol() == col && item.getRow() == row) {
-                return item;
-            }
-        }
-        return null;
+        Item item = itemGrid[col][row];
+        return (item != null && !item.isCollected()) ? item : null;
     }
 
     /**
-     * Marks the given item as collected.
+     * Marks the given item as collected and removes it from the spatial grid.
      *
      * @param item the item to collect
      */
     public void collectItem(Item item) {
         item.collect();
+        if (itemGrid[item.getCol()][item.getRow()] == item) {
+            itemGrid[item.getCol()][item.getRow()] = null;
+        }
+        uncollectedCount--;
     }
 
     // -------------------------------------------------------------------------
@@ -126,7 +133,7 @@ public class ItemSpawner {
 
     /** Attempts to spawn one item on a random free passable cell. */
     private void trySpawn() {
-        if (countUncollected() >= MAX_UNCOLLECTED) {
+        if (uncollectedCount >= MAX_UNCOLLECTED) {
             return;
         }
         if (WEIGHTED_TABLE.isEmpty()) {
@@ -146,22 +153,14 @@ public class ItemSpawner {
 
             if (map.isPassable(col, row) && getItemAt(col, row) == null) {
                 ItemType type = WEIGHTED_TABLE.get(random.nextInt(WEIGHTED_TABLE.size()));
-                items.add(new Item(type, col, row));
+                Item item = new Item(type, col, row);
+                items.add(item);
+                itemGrid[col][row] = item;
+                uncollectedCount++;
                 return;
             }
         }
         // No free cell found — skip this spawn cycle
-    }
-
-    /** Counts items that have not yet been collected. */
-    private int countUncollected() {
-        int count = 0;
-        for (Item item : items) {
-            if (!item.isCollected()) {
-                count++;
-            }
-        }
-        return count;
     }
 
     /** Returns a random interval in [MIN_SPAWN_INTERVAL, MAX_SPAWN_INTERVAL]. */
