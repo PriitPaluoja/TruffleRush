@@ -35,6 +35,8 @@ Base package: `com.example.demo`
 - **WeatherEffect** only modifies map state and VisibilityMask, never pig/item logic directly
 - **BFS utility** is stateless and reusable
 - **AI uses Strategy pattern**: `PigBehavior` interface with `Direction nextMove(AIPig, GameMap, List<Pig>)`
+- **ItemSpawner** uses a spatial `Item[25][17]` grid for O(1) position lookup — update grid on every spawn and collect
+- **PigRenderer** only rebuilds JavaFX shape children when radius or facing direction changes
 
 ## Game Constants
 - Grid: 25 columns × 17 rows, tile size 40px
@@ -42,9 +44,11 @@ Base package: `com.example.demo`
 - Level time: `max(1800, 3600 - (level-1) * 900)` ticks — starts 1 min, 15s less per level, floor 30s
 - Starting weight: 50.0 kg, minimum: 10.0 kg
 - Weight decay: `0.008 + (level-1) * 0.001` kg/tick
-- AI move interval: `max(8, 15 - level)` ticks
+- AI move interval: `max(8, 20 - level*2)` ticks — starts slow on level 1 (18 ticks), converges to floor by level 6
+- AI vision radius: 8 Manhattan-distance cells — AI pigs cannot see or target items beyond this range
 - Obstacle density multiplier: `1.0 + (level-1) * 0.15`
 - Pig visual radius: clamp(12 + weight × 0.15, 12, 28)
+- Event cooldown: 300 ticks between random events (prevents back-to-back triggers)
 
 ## Level Progression and Scoring
 - Rounds are called "levels" — surviving a level advances to the next
@@ -63,17 +67,20 @@ Base package: `com.example.demo`
 
 Power-up state lives on PlayerPig: `tickPowerUps()` decrements timers each game tick.
 
+SUPER_ACORN is available from level 2+ (spawns once per level in the middle 40% of round time).
+
 ## Random Events (RandomEventManager)
-Checked every 600 ticks; trigger chance: `30 + level×5` capped at 70%.
+Checked every 600 ticks; trigger chance: `30 + level×5` capped at 70%. Min 300-tick cooldown between events.
 
 | Event | Min Level | Effect | Duration |
 |-------|-----------|--------|----------|
-| Wolf Attack | 2 | Wolf spawns at edge, BFS-chases nearest pig | ~600 ticks |
+| Wolf Attack | 2 | Wolf spawns at edge, BFS-chases nearest pig; speed scales with level (`max(12, 30 - level*6)` ticks) | ~600 ticks |
 | Farmer Raid | 4 | Farmer chases player; escape hole spawns | ~480 ticks |
 | Truffle Rain | 1 | Extra truffle spawns every 20 ticks | 300 ticks |
 | Mud Storm | 3 | Mud slow applied to all pigs | 240 ticks |
-| Pig Stampede | 5 | 2 extra AI pigs for 480 ticks | 480 ticks |
 | Frenzy Mode | 1 | Double all item weight deltas | 300 ticks |
+
+Note: Pig Stampede event was removed (incomplete feature — no spawn logic existed).
 
 ## Navigation Flow
 1. `start()` → `showMainMenu(stage)` — displays MainMenuOverlay
