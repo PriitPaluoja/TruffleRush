@@ -27,7 +27,7 @@ public class RandomEventManager {
     private int frenzyTicks;
 
     private static final int EVENT_CHECK_INTERVAL = 600;
-    private static final int EVENT_COOLDOWN = 900;
+    private static final int EVENT_COOLDOWN = 300;
 
     public RandomEventManager(int level) {
         this.level = level;
