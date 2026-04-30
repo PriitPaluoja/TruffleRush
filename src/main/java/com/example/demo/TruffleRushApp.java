@@ -290,6 +290,7 @@ public class TruffleRushApp extends Application {
                         if (type.isHazard && pig == player && player.consumeShield()) {
                             itemSpawner.collectItem(item);
                             sidePanel.addEvent("Shield blocked " + type.name());
+                            session.markHitThisLevel();
                             continue;
                         }
                         double weightDelta = type.weightDelta;
@@ -299,6 +300,7 @@ public class TruffleRushApp extends Application {
                         pig.addWeight(weightDelta);
                         if (type == ItemType.MUD_SPLASH) {
                             pig.applyMudSlow(180);
+                            if (pig == player) session.markHitThisLevel();
                         }
                         // Power-up effects (player only)
                         if (pig == player) {
@@ -329,7 +331,8 @@ public class TruffleRushApp extends Application {
                         if (pig.getCol() == gt.getCol() && pig.getRow() == gt.getRow()) {
                             pig.addWeight(gt.getType().weightDelta);
                             if (pig == player) {
-                                session.addScore(ScoreEvent.GOLDEN_TRUFFLE_COLLECTED.points);
+                                session.addScoreWithStreak(ScoreEvent.GOLDEN_TRUFFLE_COLLECTED.points);
+                                session.noteItemCollected();
                             }
                             goldenMgr.onCollected();
                             ruthlessBehavior.setGoldenTruffleTarget(-1, -1);
@@ -366,10 +369,14 @@ public class TruffleRushApp extends Application {
                         gameOverOverlay.show(session.getDeathReason(),
                             session.getLevel(), session.getScore());
                         eventMgr.clearWolf();
+                        stop();
                         return;
                     } else if (wolf.wasStunnedByPlayer()) {
                         session.addScore(ScoreEvent.WOLF_STUNNED.points);
                         sidePanel.addEvent("Wolf stunned! +" + ScoreEvent.WOLF_STUNNED.points);
+                    } else if (wolf.wasShieldedByPlayer()) {
+                        session.markHitThisLevel();
+                        sidePanel.addEvent("Shield blocked wolf!");
                     }
                     eventMgr.clearWolf();
                 }
@@ -383,10 +390,14 @@ public class TruffleRushApp extends Application {
                         gameOverOverlay.show(session.getDeathReason(),
                             session.getLevel(), session.getScore());
                         eventMgr.clearFarmer();
+                        stop();
                         return;
                     } else if (farmer.hasPlayerEscaped()) {
                         session.addScore(ScoreEvent.FARMER_ESCAPED.points);
                         sidePanel.addEvent("Escaped! +" + ScoreEvent.FARMER_ESCAPED.points);
+                    } else if (farmer.wasShieldedByPlayer()) {
+                        session.markHitThisLevel();
+                        sidePanel.addEvent("Shield blocked farmer!");
                     }
                     eventMgr.clearFarmer();
                 }
@@ -416,8 +427,8 @@ public class TruffleRushApp extends Application {
                             int dr = Integer.signum(player.getRow() - item.getRow());
                             int nc = item.getCol() + dc;
                             int nr = item.getRow() + dr;
-                            if (map.isPassable(nc, nr)) {
-                                item.setPosition(nc, nr);
+                            if (map.isPassable(nc, nr) && itemSpawner.getItemAt(nc, nr) == null) {
+                                itemSpawner.moveItem(item, nc, nr);
                             }
                         }
                     }
@@ -440,6 +451,7 @@ public class TruffleRushApp extends Application {
                 // --- Survival score (every 60 ticks = 1 second) ---
                 if (t > 0 && t % 60 == 0) {
                     session.addScore(ScoreEvent.SURVIVAL_TICK.points);
+                    session.tickStreakSecond();
                 }
 
                 // --- Starvation check ---
@@ -448,6 +460,7 @@ public class TruffleRushApp extends Application {
                     session.endGame("Starved out!");
                     gameOverOverlay.show(session.getDeathReason(),
                         session.getLevel(), session.getScore());
+                    stop();
                     return;
                 }
 
@@ -470,9 +483,14 @@ public class TruffleRushApp extends Application {
                     } else {
                         session.addScore(ScoreEvent.LEVEL_COMPLETE.points * session.getLevel());
                         session.addScore(ScoreEvent.WEIGHT_BONUS.points * (int) player.getWeight());
+                        if (!session.wasHitThisLevel()) {
+                            session.addScore(1000);
+                            sidePanel.addEvent("CLEAN ROUND! +1000");
+                        }
                         session.updateHighScore();
                         roundEndOverlay.show(ranked);
                     }
+                    stop();
                     return;
                 }
 
@@ -508,7 +526,8 @@ public class TruffleRushApp extends Application {
                 double  sniffSecs    = sniffReady ? 0.0 : sniffCooldownNs / 1_000_000_000.0;
                 hudRenderer.update(roundTicks - t, player, allPigs,
                     weatherSystem.getCurrentWeather().name(), sniffReady, sniffSecs,
-                    player.isSniffActive());
+                    player.isSniffActive(),
+                    session.getStreakSeconds(), session.getStreakMultiplier());
 
                 // --- Wolf / Farmer render ---
                 wolfRenderer.update(eventMgr.getActiveWolf());
@@ -523,12 +542,13 @@ public class TruffleRushApp extends Application {
 
     private void awardItemScore(ItemType type) {
         switch (type) {
-            case ACORN            -> session.addScore(ScoreEvent.ACORN_COLLECTED.points);
-            case COMMON_MUSHROOM  -> session.addScore(ScoreEvent.MUSHROOM_COLLECTED.points);
-            case BLACK_TRUFFLE    -> session.addScore(ScoreEvent.BLACK_TRUFFLE_COLLECTED.points);
-            case WHITE_TRUFFLE    -> session.addScore(ScoreEvent.WHITE_TRUFFLE_COLLECTED.points);
+            case ACORN            -> session.addScoreWithStreak(ScoreEvent.ACORN_COLLECTED.points);
+            case COMMON_MUSHROOM  -> session.addScoreWithStreak(ScoreEvent.MUSHROOM_COLLECTED.points);
+            case BLACK_TRUFFLE    -> session.addScoreWithStreak(ScoreEvent.BLACK_TRUFFLE_COLLECTED.points);
+            case WHITE_TRUFFLE    -> session.addScoreWithStreak(ScoreEvent.WHITE_TRUFFLE_COLLECTED.points);
             default -> {}
         }
+        session.noteItemCollected();
     }
 
     private void resolveCollisions(List<Pig> pigs,

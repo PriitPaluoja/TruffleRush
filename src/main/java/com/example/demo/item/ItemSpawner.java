@@ -127,6 +127,33 @@ public class ItemSpawner {
         uncollectedCount--;
     }
 
+    /**
+     * Atomically moves an item to a new cell, keeping the spatial grid in sync.
+     * The destination must be in bounds and currently empty (no other uncollected
+     * item there). Returns {@code true} if the move was performed.
+     *
+     * @param item   the item to move (must currently live in this spawner)
+     * @param newCol destination column
+     * @param newRow destination row
+     * @return {@code true} if the item was moved, {@code false} otherwise
+     */
+    public boolean moveItem(Item item, int newCol, int newRow) {
+        if (item == null || item.isCollected()) return false;
+        if (newCol < 0 || newCol >= itemGrid.length) return false;
+        if (newRow < 0 || newRow >= itemGrid[0].length) return false;
+        Item existing = itemGrid[newCol][newRow];
+        if (existing != null && existing != item && !existing.isCollected()) return false;
+        int oldCol = item.getCol();
+        int oldRow = item.getRow();
+        if (oldCol == newCol && oldRow == newRow) return true;
+        if (itemGrid[oldCol][oldRow] == item) {
+            itemGrid[oldCol][oldRow] = null;
+        }
+        itemGrid[newCol][newRow] = item;
+        item.setPosition(newCol, newRow);
+        return true;
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

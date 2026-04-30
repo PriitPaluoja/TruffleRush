@@ -18,6 +18,9 @@ public enum Direction {
     /** Row delta: negative = up, positive = down. */
     public final int dr;
 
+    /** Cardinal directions in fixed order. Reuse to avoid per-call allocation. */
+    public static final Direction[] CARDINALS = { UP, DOWN, LEFT, RIGHT };
+
     Direction(int dc, int dr) {
         this.dc = dc;
         this.dr = dr;

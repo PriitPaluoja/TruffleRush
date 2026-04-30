@@ -21,6 +21,7 @@ public class Wolf {
     private int lifetime;
     private boolean active;
     private boolean caughtPlayer;
+    private boolean usedPlayerShield;
     private Pig caughtPig;
 
     private static final int MAX_LIFETIME = 600;
@@ -105,6 +106,7 @@ public class Wolf {
                         return;
                     } else if (pp.consumeShield()) {
                         // Shield blocks wolf
+                        usedPlayerShield = true;
                         active = false;
                         return;
                     } else {
@@ -141,6 +143,7 @@ public class Wolf {
     public int getRow() { return row; }
     public boolean isActive() { return active; }
     public boolean hasCaughtPlayer() { return caughtPlayer; }
+    public boolean wasShieldedByPlayer() { return usedPlayerShield; }
     public Pig getCaughtPig() { return caughtPig; }
     public boolean wasStunnedByPlayer() { return !active && !caughtPlayer && caughtPig == null && lifetime > 0; }
 }

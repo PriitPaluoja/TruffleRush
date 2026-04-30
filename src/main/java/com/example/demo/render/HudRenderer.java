@@ -2,7 +2,6 @@ package com.example.demo.render;
 
 import com.example.demo.entity.Pig;
 import com.example.demo.entity.PlayerPig;
-import java.util.StringJoiner;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
@@ -16,185 +15,180 @@ import java.util.List;
 /**
  * Renders a heads-up display (HUD) overlaid on the top edge of the game grid.
  *
- * <p>The HUD is a semi-transparent dark bar (height 40 px) drawn at y = 0,
- * spanning the full map width.  It displays:
- * <ul>
- *   <li>Each pig's name and current weight (coloured per pig).</li>
- *   <li>The current weather name.</li>
- *   <li>Round time remaining in MM:SS format.</li>
- *   <li>Sniff ability status: "Sniff: READY" or "Sniff: Xs".</li>
- * </ul>
- *
- * <p>Usage:
- * <pre>
- *   HudRenderer hud = new HudRenderer(800);
- *   sceneRoot.getChildren().add(hud.getGroup());
- *
- *   // In the game loop:
- *   hud.update(ticksLeft, playerPig, allPigs, weatherName, sniffReady, sniffCooldownSecs);
- * </pre>
+ * <p>Caches last-rendered values per element so {@code setText} is only called
+ * when the displayed string actually changes, avoiding per-frame string
+ * formatting in the steady state.
  */
 public class HudRenderer {
 
     private static final int    HUD_HEIGHT   = 40;
-    private static final double TEXT_Y       = 26.0;   // baseline within 40-px bar
+    private static final double TEXT_Y       = 26.0;
     private static final double FONT_SIZE    = 13.0;
     private static final Color  TEXT_COLOR   = Color.WHITE;
     private static final Color  READY_COLOR  = Color.rgb(100, 255, 100);
     private static final Color  COOL_COLOR   = Color.rgb(255, 180, 80);
-
-    // -------------------------------------------------------------------------
-    // Scene-graph nodes
-    // -------------------------------------------------------------------------
+    private static final Color  STREAK_COLOR = Color.rgb(255, 140, 60);
 
     private final Group     group     = new Group();
     private final Rectangle background;
-
-    /** One Text node per pig for weight display.  Rebuilt on first update if pig count changes. */
     private final List<Text> pigTexts = new ArrayList<>();
-
+    private final List<String> lastPigStrings = new ArrayList<>();
     private final Text weatherText;
     private final Text timerText;
     private final Text sniffText;
     private final Text powerUpText;
+    private final Text streakText;
 
-    private final int mapWidth;
+    private String lastWeather = "";
+    private int lastTimerTicks = -1;
+    private String lastSniffString = "";
+    private int lastSniffStateKey = -1; // 0=active, 1=ready, 2=cooling
+    private String lastPowerUpString = "";
+    private boolean lastPowerUpSuper;
+    private int lastStreakSeconds = -1;
 
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
-
-    /**
-     * Creates a HUD renderer sized to the given map pixel width.
-     *
-     * @param mapWidth total pixel width of the game area
-     */
     public HudRenderer(int mapWidth) {
-        this.mapWidth = mapWidth;
-
-        // Semi-transparent background bar
         background = new Rectangle(0, 0, mapWidth, HUD_HEIGHT);
         background.setFill(Color.rgb(10, 10, 10, 0.70));
 
-        // Weather label
         weatherText = makeText("", Color.rgb(200, 230, 255));
-
-        // Round timer
-        timerText = makeText("", TEXT_COLOR);
-
-        // Sniff status
-        sniffText = makeText("", READY_COLOR);
-
-        // Active power-ups
+        timerText   = makeText("", TEXT_COLOR);
+        sniffText   = makeText("", READY_COLOR);
         powerUpText = makeText("", Color.rgb(255, 215, 0));
+        streakText  = makeText("", STREAK_COLOR);
 
-        group.getChildren().addAll(background, weatherText, timerText, sniffText, powerUpText);
+        group.getChildren().addAll(background, weatherText, timerText, sniffText, powerUpText, streakText);
     }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
-    /**
-     * Returns the scene-graph group to be added to the scene root.
-     *
-     * @return the HUD group
-     */
     public Group getGroup() {
         return group;
     }
 
-    /**
-     * Refreshes all HUD elements with the latest game state.
-     *
-     * @param roundTicksRemaining  ticks remaining in the current round
-     * @param player               the player pig (used for sniff state)
-     * @param pigs                 all pigs in display order
-     * @param weatherName          human-readable current weather name
-     * @param sniffReady           {@code true} when the sniff cooldown has expired
-     * @param sniffCooldownSeconds seconds remaining on the sniff cooldown (0 if ready)
-     */
     public void update(int roundTicksRemaining,
                        PlayerPig player,
                        List<Pig> pigs,
                        String weatherName,
                        boolean sniffReady,
                        double sniffCooldownSeconds,
-                       boolean sniffActive) {
+                       boolean sniffActive,
+                       int streakSeconds,
+                       double streakMultiplier) {
 
-        // --- Ensure we have one Text node per pig ---
         while (pigTexts.size() < pigs.size()) {
             Text t = makeText("", TEXT_COLOR);
             pigTexts.add(t);
+            lastPigStrings.add("");
             group.getChildren().add(t);
         }
         while (pigTexts.size() > pigs.size()) {
             Text removed = pigTexts.remove(pigTexts.size() - 1);
+            lastPigStrings.remove(lastPigStrings.size() - 1);
             group.getChildren().remove(removed);
         }
-
-        // --- Layout: fixed columns so pig/weather/timer/sniff never overlap ---
-        //
-        // Pigs: x=8, each 110px wide  (4 pigs → 8..448)
-        // Weather: x=460
-        // Timer:   x=590
-        // Sniff:   x=700
 
         double x = 8.0;
         for (int i = 0; i < pigs.size(); i++) {
             Pig pig = pigs.get(i);
             Text t  = pigTexts.get(i);
-            t.setText(pig.getName() + ": " + String.format("%.1f", pig.getWeight()) + "kg");
+            // Round weight to one decimal; only update if the displayed value would change.
+            int tenths = (int) Math.round(pig.getWeight() * 10);
+            String displayed = pig.getName() + ": " + (tenths / 10) + "." + Math.abs(tenths % 10) + "kg";
+            if (!displayed.equals(lastPigStrings.get(i))) {
+                t.setText(displayed);
+                lastPigStrings.set(i, displayed);
+            }
             t.setFill(pig.getColor());
             t.setX(x);
             t.setY(TEXT_Y);
             x += 110.0;
         }
 
-        // Weather — fixed column
-        weatherText.setText(weatherName);
+        if (!weatherName.equals(lastWeather)) {
+            weatherText.setText(weatherName);
+            lastWeather = weatherName;
+        }
         weatherText.setX(560.0);
         weatherText.setY(TEXT_Y);
 
-        // Timer — fixed column
-        int totalSeconds = roundTicksRemaining / 60;
-        int minutes      = totalSeconds / 60;
-        int seconds      = totalSeconds % 60;
-        timerText.setText(String.format("Time: %02d:%02d", minutes, seconds));
+        if (roundTicksRemaining != lastTimerTicks) {
+            int totalSeconds = roundTicksRemaining / 60;
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+            // Avoid String.format for the per-tick path.
+            StringBuilder sb = new StringBuilder(12);
+            sb.append("Time: ");
+            if (minutes < 10) sb.append('0');
+            sb.append(minutes).append(':');
+            if (seconds < 10) sb.append('0');
+            sb.append(seconds);
+            timerText.setText(sb.toString());
+            lastTimerTicks = roundTicksRemaining;
+        }
         timerText.setX(700.0);
         timerText.setY(TEXT_Y);
 
-        // Sniff status — fixed column
-        if (sniffActive) {
-            sniffText.setText("Sniff: ACTIVE");
-            sniffText.setFill(Color.rgb(100, 255, 200));
-        } else if (sniffReady) {
-            sniffText.setText("Sniff: READY");
-            sniffText.setFill(READY_COLOR);
-        } else {
-            sniffText.setText(String.format("Sniff: %.0fs", sniffCooldownSeconds));
-            sniffText.setFill(COOL_COLOR);
+        int sniffKey = sniffActive ? 0 : (sniffReady ? 1 : 2);
+        if (sniffKey == 2) {
+            int secs = (int) Math.ceil(sniffCooldownSeconds);
+            String s = "Sniff: " + secs + "s";
+            if (sniffKey != lastSniffStateKey || !s.equals(lastSniffString)) {
+                sniffText.setText(s);
+                sniffText.setFill(COOL_COLOR);
+                lastSniffString = s;
+            }
+        } else if (sniffKey != lastSniffStateKey) {
+            if (sniffKey == 0) {
+                sniffText.setText("Sniff: ACTIVE");
+                sniffText.setFill(Color.rgb(100, 255, 200));
+                lastSniffString = "Sniff: ACTIVE";
+            } else {
+                sniffText.setText("Sniff: READY");
+                sniffText.setFill(READY_COLOR);
+                lastSniffString = "Sniff: READY";
+            }
         }
+        lastSniffStateKey = sniffKey;
         sniffText.setX(850.0);
         sniffText.setY(TEXT_Y);
 
-        // Power-up status (far right, wraps if needed)
-        StringJoiner powers = new StringJoiner(" ");
-        if (player.isSuperPig())    powers.add("★SUPER(" + player.getSuperPigTicks() / 60 + "s)");
-        if (player.hasSpeedBoost()) powers.add("⚡SPD(" + player.getSpeedBoostTicks() / 60 + "s)");
-        if (player.hasShield())     powers.add("🛡SHLD");
-        if (player.hasMagnet())     powers.add("◎MAG(" + player.getMagnetTicks() / 60 + "s)");
-        powerUpText.setText(powers.toString());
+        // Streak badge — only render when active (>=1s of streak)
+        if (streakSeconds != lastStreakSeconds) {
+            if (streakSeconds <= 0) {
+                streakText.setText("");
+            } else {
+                int x10 = (int) Math.round(streakMultiplier * 10);
+                streakText.setText("STREAK x" + (x10 / 10) + "." + Math.abs(x10 % 10));
+            }
+            lastStreakSeconds = streakSeconds;
+        }
+        streakText.setX(8.0);
+        streakText.setY(TEXT_Y + 14);
+
+        // Power-ups — build once then compare
+        StringBuilder pb = new StringBuilder();
+        if (player.isSuperPig())    appendPower(pb, "*SUPER", player.getSuperPigTicks() / 60);
+        if (player.hasSpeedBoost()) appendPower(pb, "SPD",    player.getSpeedBoostTicks() / 60);
+        if (player.hasShield())     { if (pb.length() > 0) pb.append(' '); pb.append("SHLD"); }
+        if (player.hasMagnet())     appendPower(pb, "MAG",    player.getMagnetTicks() / 60);
+        String powers = pb.toString();
+        boolean superNow = player.isSuperPig();
+        if (!powers.equals(lastPowerUpString)) {
+            powerUpText.setText(powers);
+            lastPowerUpString = powers;
+        }
+        if (superNow != lastPowerUpSuper) {
+            powerUpText.setFill(superNow ? Color.rgb(255, 215, 0) : Color.rgb(100, 200, 255));
+            lastPowerUpSuper = superNow;
+        }
         powerUpText.setX(955.0);
         powerUpText.setY(TEXT_Y);
-        powerUpText.setFill(player.isSuperPig() ? Color.rgb(255, 215, 0) : Color.rgb(100, 200, 255));
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    private static void appendPower(StringBuilder sb, String label, int seconds) {
+        if (sb.length() > 0) sb.append(' ');
+        sb.append(label).append('(').append(seconds).append("s)");
+    }
 
-    /** Creates a bold Text node with the given initial string and fill colour. */
     private static Text makeText(String content, Color fill) {
         Text t = new Text(content);
         t.setFont(Font.font("System", FontWeight.BOLD, FONT_SIZE));

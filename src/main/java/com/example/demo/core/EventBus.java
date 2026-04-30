@@ -55,9 +55,13 @@ public class EventBus {
         if (subs == null) {
             return;
         }
-        // Iterate over a snapshot to allow listeners to subscribe/unsubscribe during delivery
-        for (Consumer<Object> sub : new ArrayList<>(subs)) {
-            sub.accept(data);
+        // Index-based loop avoids the per-call snapshot allocation. If a listener
+        // needs to subscribe during delivery, the new entry will be skipped this call
+        // (added at the end and iteration is bounded by the size captured below).
+        // Listeners must NOT remove themselves during delivery.
+        int n = subs.size();
+        for (int i = 0; i < n; i++) {
+            subs.get(i).accept(data);
         }
     }
 }

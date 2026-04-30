@@ -21,6 +21,7 @@ public class Farmer {
     private boolean active;
     private boolean caughtPlayer;
     private boolean playerEscaped;
+    private boolean usedPlayerShield;
 
     private static final int MOVE_INTERVAL = 18;
     private static final int MAX_LIFETIME = 480;
@@ -105,6 +106,7 @@ public class Farmer {
                 active = false; // super pig ignores farmer
                 return;
             } else if (player.consumeShield()) {
+                usedPlayerShield = true;
                 active = false; // shield blocks farmer
                 return;
             } else {
@@ -121,4 +123,5 @@ public class Farmer {
     public boolean isActive() { return active; }
     public boolean hasCaughtPlayer() { return caughtPlayer; }
     public boolean hasPlayerEscaped() { return playerEscaped; }
+    public boolean wasShieldedByPlayer() { return usedPlayerShield; }
 }
