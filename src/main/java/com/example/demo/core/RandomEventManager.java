@@ -30,8 +30,14 @@ public class RandomEventManager {
     private boolean frenzyActive;
     private int frenzyTicks;
 
-    private static final int EVENT_CHECK_INTERVAL = 600;
-    private static final int EVENT_COOLDOWN = 300;
+    private static final int EVENT_CHECK_INTERVAL = 300;
+    private static final int EVENT_COOLDOWN = 150;
+
+    /**
+     * Default eventType weighting: wolf and farmer 2x more likely than the others.
+     * Indices: 0=wolf, 1=farmer, 2=truffle rain, 3=mud storm, 4=frenzy.
+     */
+    private static final int[] DEFAULT_EVENT_TABLE = {0, 0, 1, 1, 2, 3, 4};
 
     public RandomEventManager(int level) {
         this(level, new Random());
@@ -63,17 +69,17 @@ public class RandomEventManager {
             if (ticksSinceLastEvent < EVENT_COOLDOWN) {
                 // skip — too soon after last event
             } else {
-                int baseChance = 30 + level * 5;
-                int finalChance = Math.min(baseChance, 70);
+                int baseChance = 50 + level * 8;
+                int finalChance = Math.min(baseChance, 90);
 
                 if (rng.nextInt(100) < finalChance) {
-                    // GLUTTON: wolf weighted 2x (rolls 0,1 → wolf), shifting other types.
+                    // GLUTTON: stack one extra wolf weight on top of the default table.
                     int eventType;
                     if (gluttonActive) {
-                        int r = rng.nextInt(6);
-                        eventType = r <= 1 ? 0 : r - 1; // map 0,1→wolf; 2→1; 3→2; 4→3; 5→4
+                        int r = rng.nextInt(DEFAULT_EVENT_TABLE.length + 1);
+                        eventType = r == DEFAULT_EVENT_TABLE.length ? 0 : DEFAULT_EVENT_TABLE[r];
                     } else {
-                        eventType = rng.nextInt(5);
+                        eventType = DEFAULT_EVENT_TABLE[rng.nextInt(DEFAULT_EVENT_TABLE.length)];
                     }
                     switch (eventType) {
                         case 0 -> {

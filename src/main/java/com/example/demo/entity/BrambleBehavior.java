@@ -25,8 +25,11 @@ public class BrambleBehavior implements PigBehavior {
         if (player != null) {
             int dist = Math.abs(player.getCol() - self.getCol())
                      + Math.abs(player.getRow() - self.getRow());
-            // Don't bully if player is too small (would knock them under starvation)
-            if (player.getWeight() > 25.0 && dist <= 18) {
+            // Real bullies pick on smaller pigs: only chase when Bramble is heavier
+            // than the player AND within range. Don't push the player into starvation.
+            if (player.getWeight() > 25.0
+                    && self.getWeight() >= player.getWeight()
+                    && dist <= 8) {
                 List<Direction> path = BFS.findPath(map, self.getCol(), self.getRow(),
                     player.getCol(), player.getRow(), Collections.emptyList());
                 if (!path.isEmpty()) return path.get(0);
