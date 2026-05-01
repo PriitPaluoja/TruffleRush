@@ -23,6 +23,35 @@ public class GameSession {
     /** Set true when the player takes a wolf/farmer hit this level. Reset on level start. */
     private boolean hitTakenThisLevel;
 
+    /** Snapshot of perks bought before this run started. Read-only during the run. */
+    private final java.util.Map<Perk, Integer> perks = new java.util.EnumMap<>(Perk.class);
+    /** Boons picked between levels. May contain duplicates (one per level chosen). */
+    private final java.util.List<Boon> activeBoons = new java.util.ArrayList<>();
+    /** Daily-seed flag — true if this is a fixed-seed daily run. */
+    private boolean dailyRun;
+    /** Seed used to drive map and item randomness. 0 = use system time. */
+    private long runSeed;
+
+    public GameSession() {
+        for (Perk p : Perk.values()) perks.put(p, 0);
+    }
+
+    /** Snapshots perk levels from meta-progression at run start. */
+    public void applyPerks(MetaProgression meta) {
+        for (Perk p : Perk.values()) perks.put(p, meta.getPerkLevel(p));
+    }
+
+    public int getPerkLevel(Perk p) { return perks.getOrDefault(p, 0); }
+
+    public java.util.List<Boon> getActiveBoons() { return activeBoons; }
+    public void addBoon(Boon b) { activeBoons.add(b); }
+    public boolean hasBoon(Boon b) { return activeBoons.contains(b); }
+
+    public boolean isDailyRun() { return dailyRun; }
+    public void setDailyRun(boolean daily) { this.dailyRun = daily; }
+    public long getRunSeed() { return runSeed; }
+    public void setRunSeed(long seed) { this.runSeed = seed; }
+
     public int getLevel() { return level; }
     public int getScore() { return score; }
     public static int getHighScore() { return highScore; }
@@ -94,9 +123,32 @@ public class GameSession {
         return Math.max(1800, 3_600 - (level - 1) * 900);
     }
 
-    /** Weight decay per tick. Increases with level. */
+    /** Weight decay per tick. Increases with level. Reduced by SLOWER_DECAY perk and PACIFIST boon. */
     public double getWeightDecayRate() {
-        return 0.008 + (level - 1) * 0.001;
+        double base = 0.008 + (level - 1) * 0.001;
+        base -= 0.001 * getPerkLevel(Perk.SLOWER_DECAY);
+        if (hasBoon(Boon.GLUTTON)) base = 0;
+        return Math.max(0, base);
+    }
+
+    /** Number of ticks to skip decay at the start of each level (DECAY_GRACE perk). */
+    public int getDecayGraceTicks() {
+        return getPerkLevel(Perk.DECAY_GRACE) > 0 ? 300 : 0;
+    }
+
+    /** Bonus starting weight from EXTRA_WEIGHT perk. */
+    public double getStartWeightBonus() {
+        return 5.0 * getPerkLevel(Perk.EXTRA_WEIGHT);
+    }
+
+    /** Magnet pull range in cells (default 3, +1 per BIG_SNOUT level). */
+    public int getMagnetRange() {
+        return 3 + getPerkLevel(Perk.EXTRA_MAGNET_RANGE);
+    }
+
+    /** Whether the player should start each level with a shield (LUCKY_ACORN perk). */
+    public boolean startsWithShield() {
+        return getPerkLevel(Perk.START_WITH_SHIELD) > 0;
     }
 
     /** AI base move interval in ticks. Starts slow on Level 1, gets faster each level. */

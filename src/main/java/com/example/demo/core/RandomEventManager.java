@@ -12,10 +12,14 @@ import java.util.Random;
  */
 public class RandomEventManager {
 
-    private final Random rng = new Random();
+    private final Random rng;
     private final int level;
     private int eventCheckCounter;
-    private int ticksSinceLastEvent = Integer.MAX_VALUE;
+    private int ticksSinceLastEvent = 0;
+    /** GLUTTON boon: weight wolves twice as likely. */
+    private boolean gluttonActive;
+    /** PACIFIST boon: never spawn farmer. */
+    private boolean farmerDisabled;
 
     private Wolf activeWolf;
     private Farmer activeFarmer;
@@ -30,7 +34,21 @@ public class RandomEventManager {
     private static final int EVENT_COOLDOWN = 300;
 
     public RandomEventManager(int level) {
+        this(level, new Random());
+    }
+
+    public RandomEventManager(int level, Random rng) {
         this.level = level;
+        this.rng = rng;
+    }
+
+    public void setGluttonActive(boolean v) { this.gluttonActive = v; }
+    public void setFarmerDisabled(boolean v) { this.farmerDisabled = v; }
+
+    /** Bumps the cooldown forward — used by risk zones to spawn wolves faster. */
+    public void accelerateCooldown(int ticks) {
+        ticksSinceLastEvent += ticks;
+        eventCheckCounter += ticks;
     }
 
     public void tick(GameMap map, com.example.demo.entity.PlayerPig player,
@@ -49,7 +67,14 @@ public class RandomEventManager {
                 int finalChance = Math.min(baseChance, 70);
 
                 if (rng.nextInt(100) < finalChance) {
-                    int eventType = rng.nextInt(5); // 5 event types
+                    // GLUTTON: wolf weighted 2x (rolls 0,1 → wolf), shifting other types.
+                    int eventType;
+                    if (gluttonActive) {
+                        int r = rng.nextInt(6);
+                        eventType = r <= 1 ? 0 : r - 1; // map 0,1→wolf; 2→1; 3→2; 4→3; 5→4
+                    } else {
+                        eventType = rng.nextInt(5);
+                    }
                     switch (eventType) {
                         case 0 -> {
                             if (level >= 2 && activeWolf == null) {
@@ -58,7 +83,7 @@ public class RandomEventManager {
                             }
                         }
                         case 1 -> {
-                            if (level >= 4 && activeFarmer == null) {
+                            if (!farmerDisabled && level >= 4 && activeFarmer == null) {
                                 activeFarmer = new Farmer(map, player);
                                 ticksSinceLastEvent = 0;
                             }

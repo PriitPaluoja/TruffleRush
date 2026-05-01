@@ -60,6 +60,9 @@ public class Pig {
     /** Configurable decay rate (can be increased for harder levels). */
     protected double weightDecayRate = DEFAULT_WEIGHT_DECAY;
 
+    /** Optional maximum weight cap (used by Pacifist boon). 0 = no cap. */
+    protected double maxWeightCap = 0.0;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -100,12 +103,25 @@ public class Pig {
     }
 
     /**
-     * Adds {@code delta} to the pig's weight, clamping to the minimum weight.
+     * Adds {@code delta} to the pig's weight, clamping to the minimum weight
+     * and (if set) the optional maximum cap.
      *
      * @param delta the amount to add (may be negative)
      */
     public void addWeight(double delta) {
-        weight = Math.max(WEIGHT_MIN, weight + delta);
+        double next = Math.max(WEIGHT_MIN, weight + delta);
+        if (maxWeightCap > 0) next = Math.min(next, maxWeightCap);
+        weight = next;
+    }
+
+    /** Sets the starting weight (called once at run start to apply meta-perks). */
+    public void setWeight(double w) {
+        this.weight = Math.max(WEIGHT_MIN, w);
+    }
+
+    /** Sets a hard maximum weight cap (Pacifist boon). 0 disables the cap. */
+    public void setMaxWeightCap(double cap) {
+        this.maxWeightCap = cap;
     }
 
     // -------------------------------------------------------------------------
