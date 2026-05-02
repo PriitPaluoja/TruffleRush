@@ -110,8 +110,10 @@ public class ItemRenderer {
             case MUD_SPLASH:      return buildMudSplash();
             case GOLDEN_TRUFFLE:  return buildGoldenTruffle();
             case SPEED_MUSHROOM:  return buildSpeedMushroom();
+            case GREATER_SPEED:   return buildGreaterSpeed();
             case SHIELD_ACORN:    return buildShieldAcorn();
             case MAGNET_TRUFFLE:  return buildMagnetTruffle();
+            case MAGNET_CROWN:    return buildMagnetCrown();
             case DECOY_MUSHROOM:  return buildDecoyMushroom();
             case SUPER_ACORN:     return buildSuperAcorn();
             default:
@@ -253,6 +255,40 @@ public class ItemRenderer {
         stem.setStroke(Color.rgb(30, 70, 200));
         stem.setStrokeWidth(0.8);
         return new Group(stem, cap);
+    }
+
+    // ------------------------------------------------------------------
+    // GREATER_SPEED — deep blue mushroom with halo
+    // ------------------------------------------------------------------
+    private static Group buildGreaterSpeed() {
+        Circle halo = new Circle(0, -2, 12, Color.rgb(40, 90, 220, 0.25));
+        Circle cap = new Circle(0, -3, 9, Color.rgb(40, 90, 220));
+        cap.setStroke(Color.rgb(20, 50, 160));
+        cap.setStrokeWidth(1.5);
+        Rectangle stem = new Rectangle(-3, 3, 6, 6);
+        stem.setFill(Color.rgb(160, 180, 240));
+        stem.setStroke(Color.rgb(20, 50, 160));
+        stem.setStrokeWidth(0.8);
+        return new Group(halo, stem, cap);
+    }
+
+    // ------------------------------------------------------------------
+    // MAGNET_CROWN — magenta hexagon with crown spikes
+    // ------------------------------------------------------------------
+    private static Group buildMagnetCrown() {
+        Polygon hex = regularHexagon(10, Color.rgb(220, 60, 240));
+        hex.setStroke(Color.rgb(160, 30, 180));
+        hex.setStrokeWidth(1.5);
+        // Three small triangle spikes on top to suggest a crown.
+        Polygon spike1 = new Polygon(-6.0, -8.0, -4.0, -14.0, -2.0, -8.0);
+        Polygon spike2 = new Polygon(-2.0, -10.0, 0.0, -16.0, 2.0, -10.0);
+        Polygon spike3 = new Polygon(2.0, -8.0, 4.0, -14.0, 6.0, -8.0);
+        for (Polygon s : new Polygon[]{spike1, spike2, spike3}) {
+            s.setFill(Color.rgb(255, 220, 80));
+            s.setStroke(Color.rgb(180, 140, 0));
+            s.setStrokeWidth(0.8);
+        }
+        return new Group(hex, spike1, spike2, spike3);
     }
 
     // ------------------------------------------------------------------

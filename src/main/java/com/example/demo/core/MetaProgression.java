@@ -7,8 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Persistent meta-progression state: banked truffles + permanent perk levels.
@@ -20,22 +22,35 @@ public class MetaProgression {
     private static final String FILE_NAME = "meta.txt";
 
     private int truffleBank;
+    private int truffleLifetime;
     private long bestDailyDate;
     private int bestDailyScore;
     private final Map<Perk, Integer> perkLevels = new EnumMap<>(Perk.class);
+    private final Set<Achievement> achievements = EnumSet.noneOf(Achievement.class);
 
     public MetaProgression() {
         for (Perk p : Perk.values()) perkLevels.put(p, 0);
     }
 
     public int getTruffleBank() { return truffleBank; }
+    public int getTruffleLifetime() { return truffleLifetime; }
     public int getPerkLevel(Perk p) { return perkLevels.getOrDefault(p, 0); }
     public long getBestDailyDate() { return bestDailyDate; }
     public int getBestDailyScore() { return bestDailyScore; }
+    public Set<Achievement> getAchievements() { return achievements; }
+    public boolean hasAchievement(Achievement a) { return achievements.contains(a); }
+
+    /** Records a new achievement. Returns true if this was a fresh unlock. */
+    public boolean unlockAchievement(Achievement a) {
+        return achievements.add(a);
+    }
 
     /** Adds banked truffles (called when a run ends). */
     public void addToBank(int amount) {
-        if (amount > 0) truffleBank += amount;
+        if (amount > 0) {
+            truffleBank += amount;
+            truffleLifetime += amount;
+        }
     }
 
     /** Records a daily-run score if it beats the prior one for the same date. */
@@ -81,12 +96,20 @@ public class MetaProgression {
                 if (eq <= 0) continue;
                 kv.put(line.substring(0, eq).trim(), line.substring(eq + 1).trim());
             }
-            m.truffleBank    = parseInt(kv.get("truffleBank"), 0);
-            m.bestDailyDate  = parseLong(kv.get("bestDailyDate"), 0L);
-            m.bestDailyScore = parseInt(kv.get("bestDailyScore"), 0);
+            m.truffleBank     = parseInt(kv.get("truffleBank"), 0);
+            m.truffleLifetime = parseInt(kv.get("truffleLifetime"), m.truffleBank);
+            m.bestDailyDate   = parseLong(kv.get("bestDailyDate"), 0L);
+            m.bestDailyScore  = parseInt(kv.get("bestDailyScore"), 0);
             for (Perk p : Perk.values()) {
                 int lvl = parseInt(kv.get("perk." + p.name()), 0);
                 m.perkLevels.put(p, Math.min(lvl, p.maxLevel));
+            }
+            String achStr = kv.get("achievements");
+            if (achStr != null && !achStr.isEmpty()) {
+                for (String name : achStr.split(",")) {
+                    try { m.achievements.add(Achievement.valueOf(name.trim())); }
+                    catch (IllegalArgumentException ignore) {}
+                }
             }
         } catch (IOException ex) {
             // Corrupt file — ignore and start fresh.
@@ -100,12 +123,22 @@ public class MetaProgression {
             Files.createDirectories(file.getParent());
             try (BufferedWriter bw = Files.newBufferedWriter(file)) {
                 bw.write("truffleBank=" + truffleBank); bw.newLine();
+                bw.write("truffleLifetime=" + truffleLifetime); bw.newLine();
                 bw.write("bestDailyDate=" + bestDailyDate); bw.newLine();
                 bw.write("bestDailyScore=" + bestDailyScore); bw.newLine();
                 for (Perk p : Perk.values()) {
                     bw.write("perk." + p.name() + "=" + getPerkLevel(p));
                     bw.newLine();
                 }
+                StringBuilder achList = new StringBuilder();
+                boolean first = true;
+                for (Achievement a : achievements) {
+                    if (!first) achList.append(',');
+                    achList.append(a.name());
+                    first = false;
+                }
+                bw.write("achievements=" + achList);
+                bw.newLine();
             }
         } catch (IOException ex) {
             // Disk full / permission denied — nothing we can do; progress is lost.

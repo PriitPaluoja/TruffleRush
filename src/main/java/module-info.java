@@ -1,5 +1,6 @@
 module com.example.demo {
     requires javafx.controls;
+    requires java.desktop;
 
     exports com.example.demo;
     exports com.example.demo.core;

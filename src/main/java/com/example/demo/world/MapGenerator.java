@@ -26,6 +26,7 @@ public class MapGenerator {
 
     private final long seed;
     private final double densityMultiplier;
+    private final Biome biome;
 
     /**
      * Creates a generator that will use the given seed for reproducible maps.
@@ -33,7 +34,7 @@ public class MapGenerator {
      * @param seed the initial random seed
      */
     public MapGenerator(long seed) {
-        this(seed, 1.0);
+        this(seed, 1.0, Biome.FOREST);
     }
 
     /**
@@ -43,8 +44,20 @@ public class MapGenerator {
      * @param densityMultiplier scales obstacle counts (1.0 = default, 1.5 = 50% more)
      */
     public MapGenerator(long seed, double densityMultiplier) {
+        this(seed, densityMultiplier, Biome.FOREST);
+    }
+
+    /**
+     * Creates a generator with seed, density and biome theme.
+     *
+     * @param seed              the initial random seed
+     * @param densityMultiplier scales obstacle counts (1.0 = default)
+     * @param biome             theme that shifts per-obstacle ratios
+     */
+    public MapGenerator(long seed, double densityMultiplier, Biome biome) {
         this.seed = seed;
         this.densityMultiplier = densityMultiplier;
+        this.biome = biome == null ? Biome.FOREST : biome;
     }
 
     // -------------------------------------------------------------------------
@@ -120,7 +133,7 @@ public class MapGenerator {
     // --- Rocks ----------------------------------------------------------------
 
     private void placeRocks(GameMap map, Random rng) {
-        int count = (int) ((21 + rng.nextInt(8)) * densityMultiplier); // 21-28 scaled
+        int count = (int) ((21 + rng.nextInt(8)) * densityMultiplier * biome.rockMultiplier());
         for (int i = 0; i < count; i++) {
             int col = rng.nextInt(GameMap.COLS);
             int row = rng.nextInt(GameMap.ROWS);
@@ -132,7 +145,7 @@ public class MapGenerator {
 
     /** Places bushes in small clusters of 2-3 adjacent cells. */
     private void placeBushes(GameMap map, Random rng) {
-        int clusters = (int) ((11 + rng.nextInt(7)) * densityMultiplier); // 11-17 scaled
+        int clusters = (int) ((11 + rng.nextInt(7)) * densityMultiplier * biome.bushMultiplier());
         int placed = 0;
         int attempts = 0;
 
@@ -175,7 +188,7 @@ public class MapGenerator {
 
     /** Scatters mud pits with a preference for the middle of the map. */
     private void placeMudPits(GameMap map, Random rng) {
-        int count = (int) ((7 + rng.nextInt(5)) * densityMultiplier); // 7-11 scaled
+        int count = (int) ((7 + rng.nextInt(5)) * densityMultiplier * biome.mudMultiplier());
 
         int midColMin = GameMap.COLS / 4;
         int midColMax = GameMap.COLS * 3 / 4;
@@ -203,7 +216,7 @@ public class MapGenerator {
      * single horizontal or vertical line.
      */
     private void placeFences(GameMap map, Random rng) {
-        int corridors = (int) ((4 + rng.nextInt(4)) * densityMultiplier); // 4-7 scaled
+        int corridors = (int) ((4 + rng.nextInt(4)) * densityMultiplier * biome.fenceMultiplier());
 
         for (int i = 0; i < corridors; i++) {
             boolean horizontal = rng.nextBoolean();

@@ -1,7 +1,7 @@
 # TruffleRush — JavaFX Grid Game
 
 ## Project Overview
-A grid-based top-down foraging game where a player pig competes against 3 AI rivals (Hoggart, Whiskers, Bramble) to collect truffles and become the heaviest pig. Features a full level progression system, scoring, lose conditions, random events, power-ups, persistent meta-progression, run-modifying boons, daily seeded runs, and a main menu. Built with pure JavaFX shape primitives (no images).
+A grid-based top-down foraging game where a player pig competes against 3 AI rivals (Hoggart, Whiskers, Bramble) to collect truffles and become the heaviest pig. Features level progression, scoring, lose conditions, random events, power-ups (with rare stacking variants), persistent meta-progression, run-modifying boons, daily seeded runs, biomes, elite levels every 5th round, achievements, a synthesized audio system, and a post-run summary screen. Built with pure JavaFX shape primitives (no images).
 
 ## Tech Stack
 - **Java 25** with **JavaFX 21**
@@ -19,12 +19,12 @@ Base package: `com.example.demo`
 
 | Package | Purpose |
 |---------|---------|
-| `core/` | GameSession, ScoreEvent, RandomEventManager, EventBus, MetaProgression, Perk, Boon |
-| `world/` | GameMap (25×17 grid), MapGenerator (density scaling, seedable), WeatherSystem, TimeOfDay |
+| `core/` | GameSession, ScoreEvent, RandomEventManager, EventBus, MetaProgression, Perk, Boon, Achievement, AchievementTracker, AudioManager, LevelType |
+| `world/` | GameMap (25×17 grid), MapGenerator (density + biome scaling, seedable), Biome, WeatherSystem, TimeOfDay |
 | `entity/` | Pig, PlayerPig, AIPig, Wolf, Farmer; behaviors: HoggartBehavior, WhiskersBehavior, BrambleBehavior (active); RandomBehavior, CunningBehavior, RuthlessBehavior (legacy, unused) |
-| `item/` | Item types (incl. power-ups), ItemSpawner, GoldenTruffleManager, SuperAcornManager |
+| `item/` | Item types (incl. power-ups + rare GREATER_SPEED / MAGNET_CROWN), ItemSpawner, GoldenTruffleManager, SuperAcornManager |
 | `util/` | BFS pathfinding, FloodFill connectivity check |
-| `render/` | GridRenderer, HudRenderer, SidePanelRenderer, PigRenderer, ItemRenderer, WolfRenderer, FarmerRenderer, MainMenuOverlay, ShopOverlay, BoonOverlay, RoundEndOverlay, GameOverOverlay, WeatherRenderer, EffectsRenderer |
+| `render/` | GridRenderer, HudRenderer, SidePanelRenderer, PigRenderer, ItemRenderer, WolfRenderer, FarmerRenderer, MainMenuOverlay, ShopOverlay, BoonOverlay, RoundEndOverlay, RunSummaryOverlay, GameOverOverlay, WeatherRenderer, EffectsRenderer |
 
 ## Key Architecture Rules
 - **Single AnimationTimer** drives all game logic at 60fps
@@ -40,6 +40,8 @@ Base package: `com.example.demo`
 - **PigRenderer** only rebuilds JavaFX shape children when radius or facing direction changes
 - **EffectsRenderer** owns particle/screen-shake/hit-stop state; the world `Group` is translated by `getShakeX/Y` each frame, and `consumeHitStop()` lets the loop skip simulation while still rendering shake offsets
 - **Run seed**: when `GameSession.runSeed != 0`, MapGenerator and RandomEventManager are seeded from `runSeed + level * 1_000_003`. Daily runs use `LocalDate.now().toEpochDay()` as the seed base.
+- **AudioManager** synthesizes PCM tones at startup via `javax.sound.sampled` (no external files; requires `java.desktop` module); each `play(Sfx)` plays asynchronously on a daemon thread so the loop never blocks
+- **AchievementTracker** routes unlocks through a single `Consumer<Achievement>` callback (in `TruffleRushApp` it pushes to `SidePanelRenderer.addEvent` + chime); persistence is delegated to `MetaProgression`
 
 ## Game Constants
 - Grid: 25 columns × 17 rows, tile size 40px
@@ -79,6 +81,11 @@ SUPER_ACORN is available from level 2+ (spawns once per level in the middle 40% 
 ### Power-up Synergies
 - **Magnet + Shield**: when wolf is within 2 cells, emits a "Repulse!" pulse with magnet-coloured particles (visual; cooldown gated to every 30 ticks).
 - **Speed + Super Pig**: leaves a golden trail that applies 60-tick mud slow to AI pigs within 2 cells (every 4 ticks).
+
+### Stacking & Rare Variants
+- `PlayerPig.activateSpeedBoost(int)` and `activateMagnet(int)` now **add** to the timer instead of overwriting, so collecting multiple in a row extends duration.
+- `GREATER_SPEED` (deep blue mushroom): rare variant of speed mushroom, 600-tick (10 s) duration. Rarity weight 1.
+- `MAGNET_CROWN` (magenta hexagon with crown spikes): rare variant of magnet truffle, 720-tick (12 s) duration. Rarity weight 1.
 
 ## Meta-progression (persistent — `~/.trufflerush/meta.txt`)
 Truffle bank funds permanent perks bought in `ShopOverlay` between menu and run.
@@ -134,13 +141,54 @@ When GLUTTON is active, an extra wolf slot is appended to `DEFAULT_EVENT_TABLE` 
 - **Screen shake**: `worldGroup.setTranslateX/Y` jitters by `[-intensity, +intensity]` for `ticks` frames. Used on big collects, hits, and player death.
 - **Hit-stop**: `effects.hitStop(N)` — game loop skips simulation for N frames (rendering still updates shake), used on golden truffle (4), super acorn (6), wolf stun (4).
 
+## Audio (AudioManager — synthesized, no external files)
+Generates short PCM clips at startup; failures (sandbox, no audio device) silently disable. Sfx values:
+
+| Sfx | Triggered by |
+|-----|--------------|
+| `COLLECT` | Any normal item pickup |
+| `BIG_COLLECT` | Truffle / golden truffle / super acorn / wolf stun |
+| `HIT` | Wolf catches player, farmer catches player, starvation |
+| `SHIELD_BLOCK` | Shield consumed |
+| `LEVEL_UP` | Round end, farmer escape |
+| `WOLF_HOWL` | Elite-level start banner |
+| `HEARTBEAT` | Played every second when player weight < 18 |
+| `BOON_PICK` | Boon picked from BoonOverlay |
+| `ACHIEVEMENT` | Achievement unlocked |
+
+## Biomes (`world.Biome`)
+Picked from level number every 3 levels: `Biome.forLevel(level) = values()[((level - 1) / 3) % 3]`. Each biome scales the four obstacle types via per-biome multipliers fed into `MapGenerator`.
+
+| Biome | Levels | Rocks | Bushes | Mud | Fences |
+|-------|--------|-------|--------|-----|--------|
+| Forest | 1–3 | 1.3× | 1.6× | 1.0× | 1.0× |
+| Swamp  | 4–6 | 1.0× | 0.8× | 2.5× | 0.5× |
+| Farm   | 7–9 | 0.7× | 0.5× | 0.5× | 2.5× |
+
+## Elite Levels (`core.LevelType`)
+Every 5th level cycles through ARENA → SWARM → GAUNTLET (`session.getLevelType()`). Elite levels score a 2× LEVEL_COMPLETE bonus.
+
+| Type | Behaviour |
+|------|-----------|
+| ARENA | `itemSpawner.tick()` is suppressed; every 400 ticks the event cooldown is force-bumped so wolves spawn aggressively. |
+| SWARM | Items spawn 6× more often (extra `itemSpawner.tick()` every 10 frames on top of the normal cadence). |
+| GAUNTLET | Map obstacle density × 1.4; AI move interval × 0.66 (≈ 50% faster rivals). |
+
+## Achievements (`core.Achievement`, persisted in MetaProgression)
+15 achievements stored in `~/.trufflerush/meta.txt`. Conditions are checked from inline calls in `TruffleRushApp` (e.g. `achievements.unlock(Achievement.GOLDEN_TRUFFLE)` after a golden truffle pickup). `AchievementTracker.checkLifetimeTruffles/checkLevelReached/checkPerkMaxed` are convenience helpers. Each unlock fires the `ACHIEVEMENT` sfx + a starred event-log line.
+
+Examples: `FIRST_TRUFFLE`, `HUNDRED_TRUFFLES`, `THOUSAND_TRUFFLES`, `REACH_LEVEL_5/10/15`, `STUN_WOLF`, `ESCAPE_FARMER`, `GOLDEN_TRUFFLE`, `CLEAN_ROUND`, `GLUTTON_PACIFIST_RUN`, `DAILY_RUN`, `MAX_PERK`.
+
+## Run Summary (`render.RunSummaryOverlay`)
+Shown between the Game Over click and the Main Menu transition. Lists the level reached, score, items collected, wolves stunned, farmers escaped, active boons, and the truffles banked from this run. Stats live on `GameSession`: `incItemsCollected`, `incWolvesStunned`, `incFarmersEscaped`.
+
 ## Navigation Flow
 1. `start()` → load `MetaProgression` → `showMainMenu(stage)`
 2. "Start Game" → create `GameSession` → `showShop(stage)`
 3. Shop "Begin Run" → `applyPerks(meta)` → `startLevel(stage)` (random seed)
 4. Shop "Today's Daily Run" → `applyPerks(meta)` + `setDailyRun(true)` + seed = `LocalDate.now().toEpochDay()` → `startLevel(stage)`
 5. Level ends → `RoundEndOverlay` "Next Level" → `BoonOverlay` (if boons remain) → pick → `nextLevel()` → `startLevel(stage)`
-6. Game over → `gameOverOverlay` → "Main Menu" → `depositRunRewards()` (banks `score/100` truffles, records daily score, saves) → `showMainMenu(stage)`
+6. Game over → `gameOverOverlay` → "Main Menu" → `depositRunRewards()` (banks `score/100` truffles, records daily score, fires lifetime-truffle achievements, saves) → `RunSummaryOverlay` → `showMainMenu(stage)`
 
 ## Module System
-All new packages must be exported in `module-info.java`. No FXML opens needed. Currently exported: `com.example.demo`, `core`, `world`, `entity`, `item`, `util`, `render`.
+All new packages must be exported in `module-info.java`. No FXML opens needed. Currently exported: `com.example.demo`, `core`, `world`, `entity`, `item`, `util`, `render`. Required modules: `javafx.controls`, `java.desktop` (for `javax.sound.sampled` audio synthesis).

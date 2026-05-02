@@ -32,6 +32,29 @@ public class GameSession {
     /** Seed used to drive map and item randomness. 0 = use system time. */
     private long runSeed;
 
+    // --- Run statistics (for the summary screen) ---
+    private int itemsCollected;
+    private int wolvesStunned;
+    private int farmersEscaped;
+
+    public int getItemsCollected()  { return itemsCollected; }
+    public int getWolvesStunned()   { return wolvesStunned; }
+    public int getFarmersEscaped()  { return farmersEscaped; }
+    public void incItemsCollected() { itemsCollected++; }
+    public void incWolvesStunned()  { wolvesStunned++; }
+    public void incFarmersEscaped() { farmersEscaped++; }
+
+    /** Returns the level type for the current level. Every 5th level is elite. */
+    public LevelType getLevelType() {
+        if (level % 5 != 0) return LevelType.NORMAL;
+        int eliteIdx = ((level / 5) - 1) % 3;
+        return switch (eliteIdx) {
+            case 0  -> LevelType.ARENA;
+            case 1  -> LevelType.SWARM;
+            default -> LevelType.GAUNTLET;
+        };
+    }
+
     public GameSession() {
         for (Perk p : Perk.values()) perks.put(p, 0);
     }

@@ -1,9 +1,13 @@
 package com.example.demo;
 
+import com.example.demo.core.Achievement;
+import com.example.demo.core.AchievementTracker;
+import com.example.demo.core.AudioManager;
 import com.example.demo.core.Boon;
 import com.example.demo.core.EventBus;
 import com.example.demo.core.GameEvent;
 import com.example.demo.core.GameSession;
+import com.example.demo.core.LevelType;
 import com.example.demo.core.MetaProgression;
 import com.example.demo.core.Perk;
 import com.example.demo.core.RandomEventManager;
@@ -33,11 +37,13 @@ import com.example.demo.render.MainMenuOverlay;
 import com.example.demo.render.ObstacleRenderer;
 import com.example.demo.render.PigRenderer;
 import com.example.demo.render.RoundEndOverlay;
+import com.example.demo.render.RunSummaryOverlay;
 import com.example.demo.render.ShopOverlay;
 import com.example.demo.render.SidePanelRenderer;
 import com.example.demo.render.SniffRenderer;
 import com.example.demo.render.WeatherRenderer;
 import com.example.demo.render.WolfRenderer;
+import com.example.demo.world.Biome;
 import com.example.demo.world.GameMap;
 import com.example.demo.world.MapGenerator;
 import com.example.demo.world.Weather;
@@ -69,10 +75,15 @@ public class TruffleRushApp extends Application {
     private AnimationTimer activeTimer;
     private GameSession session;
     private MetaProgression meta;
+    private AudioManager audio;
+    private AchievementTracker achievements;
+    private int pendingBankedThisRun;
 
     @Override
     public void start(Stage stage) {
         meta = MetaProgression.load();
+        audio = new AudioManager();
+        achievements = new AchievementTracker(meta);
         showMainMenu(stage);
     }
 
@@ -136,10 +147,20 @@ public class TruffleRushApp extends Application {
         final double winWeight = session.getWinWeight();
         final long seedBase = session.getRunSeed() == 0 ? System.currentTimeMillis() : session.getRunSeed();
         final long levelSeed = seedBase + session.getLevel() * 1_000_003L;
+        final LevelType levelType = session.getLevelType();
+        final Biome biome = Biome.forLevel(session.getLevel());
 
         // --- World ---
         GameMap map = new GameMap();
-        new MapGenerator(levelSeed, session.getObstacleDensityMultiplier()).generate(map);
+        double densityMult = session.getObstacleDensityMultiplier();
+        if (levelType == LevelType.GAUNTLET) densityMult *= 1.4;
+        new MapGenerator(levelSeed, densityMult, biome).generate(map);
+
+        // Achievement: reaching this level
+        achievements.checkLevelReached(session.getLevel());
+
+        // Toast for elite or biome change
+        // (deferred until sidePanel is created below)
 
         // --- Risk zones (wolf dens) ---
         Set<Long> wolfDens = pickWolfDens(map, new java.util.Random(levelSeed ^ 0x5AFEL), 3);
@@ -183,6 +204,8 @@ public class TruffleRushApp extends Application {
         double swiftMult = session.hasBoon(Boon.SWIFT_HOOVES) ? 1.5 : 1.0;
         double swiftSpeed = session.hasBoon(Boon.SWIFT_HOOVES) ? 1.25 : 1.0;
         int aiMoveInterval = session.getAiMoveInterval();
+        // Gauntlet: AI is 50% faster (lower move interval)
+        if (levelType == LevelType.GAUNTLET) aiMoveInterval = Math.max(4, (int) (aiMoveInterval * 0.66));
         for (Pig pig : allPigs) pig.setWeightDecayRate(decayRate * (pig == player ? swiftMult : 1.0));
         hoggart.setMoveInterval(aiMoveInterval);
         whiskers.setMoveInterval(aiMoveInterval);
@@ -219,8 +242,22 @@ public class TruffleRushApp extends Application {
         RoundEndOverlay       roundEndOverlay   = new RoundEndOverlay(MAP_W, MAP_H);
         BoonOverlay           boonOverlay       = new BoonOverlay(SCENE_W, SCENE_H);
         GameOverOverlay       gameOverOverlay   = new GameOverOverlay(SCENE_W, SCENE_H);
+        RunSummaryOverlay     runSummaryOverlay = new RunSummaryOverlay(SCENE_W, SCENE_H);
 
         obstacleRenderer.render(map);
+
+        // Achievements: route the toast through the side panel and play a chime.
+        achievements.setOnUnlock(a -> {
+            sidePanel.addEvent("★ " + a.displayName);
+            audio.play(AudioManager.Sfx.ACHIEVEMENT);
+        });
+
+        // Toast biome + level type at level start
+        sidePanel.addEvent(biome.displayName + " biome");
+        if (levelType != LevelType.NORMAL) {
+            sidePanel.addEvent(levelType.label() + "!");
+            audio.play(AudioManager.Sfx.WOLF_HOWL);
+        }
 
         // --- World group (the part that gets shaken on screen-shake) ---
         Group worldGroup = new Group();
@@ -257,6 +294,8 @@ public class TruffleRushApp extends Application {
         // --- Boon picker advances to the next level after a pick. ---
         boonOverlay.setOnPicked(b -> {
             session.addBoon(b);
+            audio.play(AudioManager.Sfx.BOON_PICK);
+            achievements.unlock(Achievement.FIRST_BOON);
             heldDirection = Direction.NONE;
             session.nextLevel();
             startLevel(stage);
@@ -275,10 +314,15 @@ public class TruffleRushApp extends Application {
             }
         });
 
-        // --- Game Over → Main Menu wiring (also banks truffles) ---
+        // --- Game Over → Run Summary → Main Menu wiring ---
         gameOverOverlay.setOnMainMenu(() -> {
             heldDirection = Direction.NONE;
             depositRunRewards();
+            gameOverOverlay.hide();
+            runSummaryOverlay.show(session, meta.getTruffleBank(), pendingBankedThisRun);
+        });
+        runSummaryOverlay.setOnContinue(() -> {
+            heldDirection = Direction.NONE;
             showMainMenu(stage);
         });
 
@@ -290,7 +334,8 @@ public class TruffleRushApp extends Application {
             sidePanel.getGroup(),
             roundEndOverlay.getGroup(),
             boonOverlay.getGroup(),
-            gameOverOverlay.getGroup()
+            gameOverOverlay.getGroup(),
+            runSummaryOverlay.getGroup()
         );
 
         Scene scene = new Scene(root, SCENE_W, SCENE_H, Color.BLACK);
@@ -430,18 +475,30 @@ public class TruffleRushApp extends Application {
                         // Power-up effects (player only) and feedback
                         if (pig == player) {
                             awardItemScore(type);
+                            session.incItemsCollected();
                             switch (type) {
                                 case SPEED_MUSHROOM -> { player.activateSpeedBoost(300); sidePanel.addEvent("Speed Boost!"); }
+                                case GREATER_SPEED  -> { player.activateSpeedBoost(600); sidePanel.addEvent("GREATER SPEED!"); }
                                 case SHIELD_ACORN   -> { player.activateShield(); sidePanel.addEvent("Shield Active!"); }
                                 case MAGNET_TRUFFLE -> { player.activateMagnet(360); sidePanel.addEvent("Magnet Active!"); }
+                                case MAGNET_CROWN   -> { player.activateMagnet(720); sidePanel.addEvent("MAGNET CROWN!"); }
                                 case DECOY_MUSHROOM -> sidePanel.addEvent("Decoy placed!");
                                 default -> {}
                             }
-                            // Game-feel: particle burst + tiny shake on collection
+                            // Achievement: first truffle / lifetime totals
+                            if (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE) {
+                                achievements.unlock(Achievement.FIRST_TRUFFLE);
+                            }
+                            // Game-feel: particle burst + audio on collection
                             Color burstColor = particleColor(type);
                             int burstSize = (type.weightDelta >= 8) ? 14 : 8;
                             effects.spawnBurst(item.getCol(), item.getRow(), burstColor, burstSize);
-                            if (type.weightDelta >= 8) effects.shake(6, 2.0);
+                            if (type.weightDelta >= 8) {
+                                effects.shake(6, 2.0);
+                                audio.play(AudioManager.Sfx.BIG_COLLECT);
+                            } else {
+                                audio.play(AudioManager.Sfx.COLLECT);
+                            }
                         }
                         itemSpawner.collectItem(item);
                         eventBus.publish(GameEvent.ITEM_COLLECTED, item);
@@ -462,9 +519,12 @@ public class TruffleRushApp extends Application {
                             if (pig == player) {
                                 session.addScoreWithStreak(ScoreEvent.GOLDEN_TRUFFLE_COLLECTED.points);
                                 session.noteItemCollected();
+                                session.incItemsCollected();
                                 effects.spawnBurst(gt.getCol(), gt.getRow(), Color.rgb(255, 215, 0), 28);
                                 effects.shake(12, 4.5);
                                 effects.hitStop(4);
+                                audio.play(AudioManager.Sfx.BIG_COLLECT);
+                                achievements.unlock(Achievement.GOLDEN_TRUFFLE);
                             }
                             goldenMgr.onCollected();
                             eventBus.publish(GameEvent.ITEM_COLLECTED, gt);
@@ -486,6 +546,7 @@ public class TruffleRushApp extends Application {
                         effects.spawnBurst(saItem.getCol(), saItem.getRow(), Color.rgb(255, 215, 0), 30);
                         effects.shake(20, 6.0);
                         effects.hitStop(6);
+                        audio.play(AudioManager.Sfx.BIG_COLLECT);
                     }
                 }
 
@@ -499,6 +560,7 @@ public class TruffleRushApp extends Application {
                     if (wolf.hasCaughtPlayer()) {
                         roundOver[0] = true;
                         effects.shake(30, 8.0);
+                        audio.play(AudioManager.Sfx.HIT);
                         session.endGame("Eaten by a wolf!");
                         gameOverOverlay.show(session.getDeathReason(),
                             session.getLevel(), session.getScore());
@@ -507,15 +569,21 @@ public class TruffleRushApp extends Application {
                         return;
                     } else if (wolf.wasStunnedByPlayer()) {
                         session.addScore(ScoreEvent.WOLF_STUNNED.points);
+                        session.incWolvesStunned();
                         sidePanel.addEvent("Wolf stunned! +" + ScoreEvent.WOLF_STUNNED.points);
                         effects.spawnBurst(wolf.getCol(), wolf.getRow(), Color.rgb(255, 80, 80), 20);
                         effects.shake(10, 4.0);
                         effects.hitStop(4);
+                        audio.play(AudioManager.Sfx.BIG_COLLECT);
+                        achievements.unlock(Achievement.STUN_WOLF);
+                        if (player.getWeight() < 20) achievements.unlock(Achievement.SURVIVE_WOLF);
                     } else if (wolf.wasShieldedByPlayer()) {
                         session.markHitThisLevel();
                         sidePanel.addEvent("Shield blocked wolf!");
                         effects.spawnBurst(wolf.getCol(), wolf.getRow(), Color.rgb(100, 255, 100), 16);
                         effects.shake(8, 3.0);
+                        audio.play(AudioManager.Sfx.SHIELD_BLOCK);
+                        if (player.getWeight() < 20) achievements.unlock(Achievement.SURVIVE_WOLF);
                     }
                     eventMgr.clearWolf();
                     wolfHolder[0] = null;
@@ -527,6 +595,7 @@ public class TruffleRushApp extends Application {
                     if (farmer.hasCaughtPlayer()) {
                         roundOver[0] = true;
                         effects.shake(30, 8.0);
+                        audio.play(AudioManager.Sfx.HIT);
                         session.endGame("Caught by the farmer!");
                         gameOverOverlay.show(session.getDeathReason(),
                             session.getLevel(), session.getScore());
@@ -535,11 +604,15 @@ public class TruffleRushApp extends Application {
                         return;
                     } else if (farmer.hasPlayerEscaped()) {
                         session.addScore(ScoreEvent.FARMER_ESCAPED.points);
+                        session.incFarmersEscaped();
                         sidePanel.addEvent("Escaped! +" + ScoreEvent.FARMER_ESCAPED.points);
                         effects.spawnBurst(player.getCol(), player.getRow(), Color.rgb(120, 255, 120), 22);
+                        audio.play(AudioManager.Sfx.LEVEL_UP);
+                        achievements.unlock(Achievement.ESCAPE_FARMER);
                     } else if (farmer.wasShieldedByPlayer()) {
                         session.markHitThisLevel();
                         sidePanel.addEvent("Shield blocked farmer!");
+                        audio.play(AudioManager.Sfx.SHIELD_BLOCK);
                     }
                     eventMgr.clearFarmer();
                 }
@@ -605,10 +678,23 @@ public class TruffleRushApp extends Application {
                     pig.tickStun();
                 }
 
-                // --- Item spawning (overcast bonus) ---
+                // --- Item spawning (overcast bonus + SWARM elite + ARENA disable) ---
                 double spawnRate = weatherSystem.getSpawnRateMultiplier();
-                if (spawnRate >= 1.2 && spawnAccum[0] % 5 == 0) itemSpawner.tick();
-                itemSpawner.tick();
+                if (levelType != LevelType.ARENA) {
+                    if (spawnRate >= 1.2 && spawnAccum[0] % 5 == 0) itemSpawner.tick();
+                    itemSpawner.tick();
+                    if (levelType == LevelType.SWARM && t % 10 == 0) itemSpawner.tick();
+                }
+                if (levelType == LevelType.ARENA && t > 0 && t % 400 == 0
+                        && eventMgr.getActiveWolf() == null && session.getLevel() >= 2) {
+                    // Force wolf spawns in arena via cooldown bypass
+                    eventMgr.accelerateCooldown(1000);
+                }
+
+                // --- Heartbeat audio when player weight is low ---
+                if (player.getWeight() < 18 && t % 60 == 30) {
+                    audio.play(AudioManager.Sfx.HEARTBEAT);
+                }
 
                 // --- Survival score ---
                 if (t > 0 && t % 60 == 0) {
@@ -619,6 +705,7 @@ public class TruffleRushApp extends Application {
                 // --- Starvation check ---
                 if (player.getWeight() <= 10.0) {
                     roundOver[0] = true;
+                    audio.play(AudioManager.Sfx.HIT);
                     session.endGame("Starved out!");
                     gameOverOverlay.show(session.getDeathReason(),
                         session.getLevel(), session.getScore());
@@ -643,13 +730,21 @@ public class TruffleRushApp extends Application {
                         gameOverOverlay.show(session.getDeathReason(),
                             session.getLevel(), session.getScore());
                     } else {
-                        session.addScore(ScoreEvent.LEVEL_COMPLETE.points * session.getLevel());
+                        // Elite level bonus
+                        int levelMult = (levelType == LevelType.NORMAL) ? 1 : 2;
+                        session.addScore(ScoreEvent.LEVEL_COMPLETE.points * session.getLevel() * levelMult);
                         session.addScore(ScoreEvent.WEIGHT_BONUS.points * (int) player.getWeight());
                         if (!session.wasHitThisLevel()) {
                             session.addScore(1000);
                             sidePanel.addEvent("CLEAN ROUND! +1000");
+                            achievements.unlock(Achievement.CLEAN_ROUND);
+                        }
+                        // Achievement: Glutton + Pacifist active simultaneously
+                        if (session.hasBoon(Boon.GLUTTON) && session.hasBoon(Boon.PACIFIST)) {
+                            achievements.unlock(Achievement.GLUTTON_PACIFIST_RUN);
                         }
                         session.updateHighScore();
+                        audio.play(AudioManager.Sfx.LEVEL_UP);
                         roundEndOverlay.show(ranked);
                     }
                     stop();
@@ -776,6 +871,8 @@ public class TruffleRushApp extends Application {
             case COMMON_MUSHROOM-> Color.rgb(210, 175, 130);
             case ACORN          -> Color.rgb(150, 90, 50);
             case MAGNET_TRUFFLE -> Color.rgb(160, 50, 220);
+            case MAGNET_CROWN   -> Color.rgb(220, 60, 240);
+            case GREATER_SPEED  -> Color.rgb(40, 90, 220);
             case SPEED_MUSHROOM -> Color.rgb(80, 140, 255);
             case SHIELD_ACORN   -> Color.rgb(255, 215, 0);
             case DECOY_MUSHROOM -> Color.rgb(255, 140, 60);
@@ -792,9 +889,13 @@ public class TruffleRushApp extends Application {
         int score = session.getScore();
         int banked = Math.max(1, score / 100);
         meta.addToBank(banked);
+        pendingBankedThisRun = banked;
         if (session.isDailyRun()) {
             meta.recordDailyScore(LocalDate.now().toEpochDay(), score);
+            achievements.unlock(Achievement.DAILY_RUN);
         }
+        achievements.checkLifetimeTruffles();
+        achievements.checkPerkMaxed();
         meta.save();
     }
 

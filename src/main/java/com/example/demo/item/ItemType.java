@@ -26,7 +26,9 @@ public enum ItemType {
     SHIELD_ACORN   (  0,   3, false, "circle, gold ring"),   // blocks next negative hit
     MAGNET_TRUFFLE (  0,   2, false, "hexagon, purple"),     // pulls nearby items for 6s
     DECOY_MUSHROOM (  0,   4, false, "circle, orange"),      // fake golden truffle lures AI
-    SUPER_ACORN    ( +5,   0, false, "circle, golden glow"); // triggers super pig mode
+    SUPER_ACORN    ( +5,   0, false, "circle, golden glow"), // triggers super pig mode
+    GREATER_SPEED  (  0,   1, false, "circle, deep blue"),   // 10s speed boost
+    MAGNET_CROWN   (  0,   1, false, "hexagon, magenta");    // 12s magnet, also wider range
 
     /** Weight change applied to the pig when this item is collected. */
     public final int weightDelta;

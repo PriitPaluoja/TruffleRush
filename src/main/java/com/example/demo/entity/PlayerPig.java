@@ -142,13 +142,15 @@ public class PlayerPig extends Pig {
     // Power-ups
     // -------------------------------------------------------------------------
 
-    public void activateSpeedBoost(int ticks) { this.speedBoostTicks = ticks; }
+    /** Adds {@code ticks} to the speed-boost timer (stacks instead of overwriting). */
+    public void activateSpeedBoost(int ticks) { this.speedBoostTicks += ticks; }
     public void activateShield() { this.hasShield = true; }
     public boolean consumeShield() {
         if (hasShield) { hasShield = false; return true; }
         return false;
     }
-    public void activateMagnet(int ticks) { this.magnetTicks = ticks; }
+    /** Adds {@code ticks} to the magnet timer (stacks instead of overwriting). */
+    public void activateMagnet(int ticks) { this.magnetTicks += ticks; }
     public void activateSuperPig(int ticks) {
         this.superPigActive = true;
         this.superPigTicks = ticks;
