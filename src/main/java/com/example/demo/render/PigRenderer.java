@@ -71,7 +71,7 @@ public class PigRenderer {
         magnetHalo.setVisible(false);
         auraLayer.getChildren().addAll(superHalo, speedHalo, shieldHalo, magnetHalo);
 
-        Group initialBody = ShapeFactory.createPigShape(pig.getColor(), lastRadius, lastFacing);
+        Group initialBody = ShapeFactory.createPigShape(pig.getColor(), lastRadius, lastFacing, pig.getName());
         this.bodyLayer = new Group();
         bodyLayer.getChildren().setAll(initialBody.getChildren());
 
@@ -104,7 +104,7 @@ public class PigRenderer {
         boolean facingChanged = currentFacing != lastFacing;
 
         if (radiusChanged || facingChanged) {
-            Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, currentFacing);
+            Group newShape = ShapeFactory.createPigShape(pig.getColor(), currentRadius, currentFacing, pig.getName());
             bodyLayer.getChildren().setAll(newShape.getChildren());
             lastRadius = currentRadius;
             lastFacing = currentFacing;

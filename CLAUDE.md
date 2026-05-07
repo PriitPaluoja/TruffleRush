@@ -24,7 +24,7 @@ Base package: `com.example.demo`
 | `entity/` | Pig, PlayerPig, AIPig, Wolf, Farmer; behaviors: HoggartBehavior, WhiskersBehavior, BrambleBehavior (active); RandomBehavior, CunningBehavior, RuthlessBehavior (legacy, unused) |
 | `item/` | Item types (incl. power-ups + rare GREATER_SPEED / MAGNET_CROWN), ItemSpawner, GoldenTruffleManager, SuperAcornManager |
 | `util/` | BFS pathfinding, FloodFill connectivity check |
-| `render/` | GridRenderer, HudRenderer, SidePanelRenderer, PigRenderer, ItemRenderer, WolfRenderer, FarmerRenderer, MainMenuOverlay, ShopOverlay, BoonOverlay, RoundEndOverlay, RunSummaryOverlay, GameOverOverlay, PauseOverlay, WeatherRenderer, EffectsRenderer |
+| `render/` | GridRenderer, ObstacleRenderer, ItemRenderer, GoldenTruffleRenderer, PigRenderer, ShapeFactory, WolfRenderer, FarmerRenderer, SniffRenderer, WeatherRenderer, EffectsRenderer, HudRenderer, SidePanelRenderer, MainMenuOverlay, ShopOverlay, BoonOverlay, RoundEndOverlay, RunSummaryOverlay, GameOverOverlay, PauseOverlay |
 
 ## Key Architecture Rules
 - **Single AnimationTimer** drives all game logic at 60fps
@@ -37,7 +37,9 @@ Base package: `com.example.demo`
 - **BFS utility** is stateless and reusable
 - **AI uses Strategy pattern**: `PigBehavior` interface with `Direction nextMove(AIPig, GameMap, List<Pig>)`
 - **ItemSpawner** uses a spatial `Item[25][17]` grid for O(1) position lookup — update grid on every spawn and collect
-- **PigRenderer** only rebuilds JavaFX shape children when radius or facing direction changes
+- **PigRenderer** delegates the body shape to `ShapeFactory.createPigShape(color, radius, facing, name)` and only rebuilds it when radius or facing direction changes. The `name` switch picks the per-pig identity marker (Player flower, Hoggart leaf antenna, Whiskers whiskers, Bramble V-brow), so all rivals stay readable at a glance.
+- **GridRenderer** owns two sub-layers: a `tileLayer` that re-tints every frame from `TimeOfDay × Biome.tileTint()`, and a static `decorationLayer` of grass tufts / reeds / dirt patches built once via `setLevel(map, biome)`. Decoration RNG is seeded by `(col, row, biome)` so daily runs reproduce the same sprinkle.
+- **SniffRenderer** runs two concentric pulse rings on a 40-tick cycle (offset by half a cycle) plus a fading scent-particle pool. A 14-particle burst fires on the rising edge of `sniffActive`, and 2 drift particles spawn every 6 ticks while sniff is active; particles continue fading after sniff ends so the effect dies down naturally.
 - **EffectsRenderer** owns particle/screen-shake/hit-stop state; the world `Group` is translated by `getShakeX/Y` each frame, and `consumeHitStop()` lets the loop skip simulation while still rendering shake offsets. Both shake and hit-stop respect runtime-toggleable `shakeEnabled` / `hitStopEnabled` flags wired from the pause menu.
 - **Run seed**: when `GameSession.runSeed != 0`, MapGenerator and RandomEventManager are seeded from `runSeed + level * 1_000_003`. Daily runs use `LocalDate.now().toEpochDay()` as the seed base.
 - **AudioManager** synthesizes PCM tones at startup via `javax.sound.sampled` (no external files; requires `java.desktop` module); each `play(Sfx)` plays asynchronously on a daemon thread so the loop never blocks. Master volume is applied via `FloatControl.MASTER_GAIN` (linear→dB), driven from the pause-menu slider.
@@ -202,11 +204,15 @@ Checked every 300 ticks (~5 s); trigger chance: `min(50 + level×8, 90)`. Min 15
 When GLUTTON is active, an extra wolf slot is appended to `DEFAULT_EVENT_TABLE` so wolves get one more weight on top of the default 2×. When PACIFIST is active, the farmer case is skipped silently.
 
 ## AI Personalities
-| Pig | Behavior class | Strategy |
-|-----|----------------|----------|
-| Hoggart (pink) | HoggartBehavior | Always heads for the closest visible item, ignoring value/hazards |
-| Whiskers (brown) | WhiskersBehavior | Cunning item-hunter; flees when wolf is within 6 cells (uses a `Supplier<Wolf>` to read the active wolf without coupling to RandomEventManager) |
-| Bramble (dark grey) | BrambleBehavior | Chases the player only when Bramble is at least as heavy as the player, player weight > 25, and within 8 cells; otherwise drifts toward map centre |
+| Pig | Behavior class | Strategy | Identity marker |
+|-----|----------------|----------|-----------------|
+| Hoggart (pink) | HoggartBehavior | Always heads for the closest visible item, ignoring value/hazards | Single leaf antenna sticking up from the back of the head |
+| Whiskers (brown) | WhiskersBehavior | Cunning item-hunter; flees when wolf is within 6 cells (uses a `Supplier<Wolf>` to read the active wolf without coupling to RandomEventManager) | Three fine whisker lines fanning from each side of the snout |
+| Bramble (dark grey) | BrambleBehavior | Chases the player only when Bramble is at least as heavy as the player, player weight > 25, and within 8 cells; otherwise drifts toward map centre | V-shaped angry brow that meets between the eyes |
+
+The player ("Player") wears a 4-petal yellow/red flower above the head. Identity markers are drawn by `ShapeFactory.createPigShape(..., name)` and live on top of the pig body so they remain visible through halos and stun-fades.
+
+Each pig body is built from: a tail (opposite the facing direction), 4 small leg ovals at the diagonal corners, two ears (perpendicular spread, slight forward lean), the body circle, the snout, a thin mouth line on the snout's leading edge, two nostrils, two white eyes with black pupils that nudge toward the facing direction, and the identity marker. All shapes are pure JavaFX primitives.
 
 `RandomBehavior`, `CunningBehavior`, `RuthlessBehavior` remain on disk as legacy code (unused by the current `TruffleRushApp` wiring).
 
@@ -231,13 +237,23 @@ Generates short PCM clips at startup; failures (sandbox, no audio device) silent
 | `ACHIEVEMENT` | Achievement unlocked |
 
 ## Biomes (`world.Biome`)
-Picked from level number every 3 levels: `Biome.forLevel(level) = values()[((level - 1) / 3) % 3]`. Each biome scales the four obstacle types via per-biome multipliers fed into `MapGenerator`.
+Picked from level number every 3 levels: `Biome.forLevel(level) = values()[((level - 1) / 3) % 3]`. Each biome scales the four obstacle types via per-biome multipliers fed into `MapGenerator` and supplies five accent colors consumed by the renderers.
 
 | Biome | Levels | Rocks | Bushes | Mud | Fences |
 |-------|--------|-------|--------|-----|--------|
 | Forest | 1–3 | 1.3× | 1.6× | 1.0× | 1.0× |
 | Swamp  | 4–6 | 1.0× | 0.8× | 2.5× | 0.5× |
 | Farm   | 7–9 | 0.7× | 0.5× | 0.5× | 2.5× |
+
+**Per-biome accents** (`Biome.bushAccent / rockHighlight / mudAccent / tileTint / decorationColor`):
+
+| Biome | Bush berries | Rock facet highlight | Mud bubbles | Floor tint | Decoration |
+|-------|--------------|----------------------|-------------|------------|------------|
+| Forest | red | cool grey | brown | saturated grass-green | grass tufts (3-blade fans), forest-only moss on rocks |
+| Swamp  | dark blue | warm grey | dark olive | murky green-grey | reeds + algae specks, swamp-only reed sticking out of mud pits |
+| Farm   | pale yellow | warm beige | tan | dry tan | dirt patches + small pebbles |
+
+`GridRenderer.setLevel(map, biome)` rebuilds the floor decoration layer once per level using a deterministic `(col, row, biome)` seed; per-frame `update(timeProgress)` only re-tints the underlying rectangles.
 
 ## Elite Levels (`core.LevelType`)
 Every 5th level cycles through ARENA → SWARM → GAUNTLET (`session.getLevelType()`). Elite levels score a 2× LEVEL_COMPLETE bonus.

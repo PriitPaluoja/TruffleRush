@@ -61,4 +61,27 @@ public enum Biome {
             default:    return Color.rgb(80, 50, 25, 0.85);
         }
     }
+
+    /**
+     * Soft tint blended into the base tile color so the floor reads
+     * differently in each biome. Mixed at ~25% strength by GridRenderer.
+     */
+    public Color tileTint() {
+        switch (this) {
+            case SWAMP: return Color.rgb(80, 95, 60);     // murky green-grey
+            case FARM:  return Color.rgb(180, 150, 90);   // dry tan
+            case FOREST:
+            default:    return Color.rgb(70, 130, 50);    // saturated grass
+        }
+    }
+
+    /** Color used for the decoration pass (grass tufts, reeds, dirt patches). */
+    public Color decorationColor() {
+        switch (this) {
+            case SWAMP: return Color.rgb(60, 110, 70, 0.55);
+            case FARM:  return Color.rgb(120, 90, 50, 0.55);
+            case FOREST:
+            default:    return Color.rgb(40, 110, 40, 0.65);
+        }
+    }
 }

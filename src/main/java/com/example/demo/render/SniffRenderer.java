@@ -5,86 +5,177 @@ import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
 /**
- * Renders the sniff ability visual: an expanding faint green pulse circle
- * centred on the player pig's tile.
+ * Renders the sniff ability visual: two concentric green pulses cycling
+ * outward from the player's tile plus drifting "scent" particles that fade
+ * over time. On the rising edge of {@code sniffActive} a small particle burst
+ * fires for tactile feedback.
  *
- * <p>When sniff becomes active the circle expands from radius 0 to 80 px
- * over 30 ticks, then holds at 80 px for the remainder of the sniff
- * duration.  When sniff ends the circle is hidden.
+ * <p>Both rings repeat every {@link #CYCLE_TICKS} frames while sniff is active,
+ * with the outer ring offset by half a cycle so the effect feels alive instead
+ * of one static circle. Particles continue to tick (and fade) even after sniff
+ * ends so the trail dies down naturally.
  */
 public class SniffRenderer {
 
-    private static final int   TILE        = GameMap.TILE_SIZE; // 40 px
-    private static final double MAX_RADIUS = 2.0 * TILE;       // 80 px
-    private static final int   GROW_TICKS  = 30;
+    private static final int    TILE       = GameMap.TILE_SIZE;
+    private static final double MAX_RADIUS = 2.0 * TILE;
+    private static final int    CYCLE_TICKS = 40;
+    private static final int    PARTICLE_SPAWN_INTERVAL = 6;
 
-    /** Counts ticks since the pulse started (capped at GROW_TICKS). */
-    private int     pulseTick = 0;
-
-    /** Whether the pulse is currently running. */
-    private boolean active    = false;
-
-    /** The previous sniff-active state — used to detect the rising edge. */
-    private boolean prevSniffActive = false;
-
-    private final Circle pulseCircle;
+    private final Circle innerRing;
+    private final Circle outerRing;
+    private final Group  ringLayer;
+    private final Group  particleLayer;
     private final Group  group;
 
-    public SniffRenderer() {
-        pulseCircle = new Circle(0, 0, 0);
-        pulseCircle.setFill(Color.TRANSPARENT);
-        pulseCircle.setStroke(Color.rgb(200, 255, 200, 0.5));
-        pulseCircle.setStrokeWidth(2.0);
-        pulseCircle.setVisible(false);
+    private final List<ScentParticle> particles = new ArrayList<>();
+    private final Random rng = new Random();
 
-        group = new Group(pulseCircle);
+    private boolean prevSniffActive = false;
+    private boolean active          = false;
+    private int     innerTick       = 0;
+    private int     outerTick       = -CYCLE_TICKS / 2;
+    private int     spawnCounter    = 0;
+
+    public SniffRenderer() {
+        innerRing = makeRing();
+        outerRing = makeRing();
+        ringLayer = new Group(innerRing, outerRing);
+        particleLayer = new Group();
+        // Particles below rings so the rings outline the bloom.
+        group = new Group(particleLayer, ringLayer);
     }
 
-    /** Returns the node that should be added to the scene graph. */
     public Group getGroup() {
         return group;
     }
 
-    /**
-     * Updates pulse state and circle geometry each game tick.
-     *
-     * @param sniffActive whether the player's sniff ability is currently active
-     * @param playerCol   player's current column on the grid
-     * @param playerRow   player's current row on the grid
-     */
     public void update(boolean sniffActive, int playerCol, int playerRow) {
-        // Detect rising edge: sniff just became active
-        if (sniffActive && !prevSniffActive) {
-            active    = true;
-            pulseTick = 0;
-        }
-
-        // Detect falling edge: sniff just ended
-        if (!sniffActive && prevSniffActive) {
-            active = false;
-            pulseCircle.setVisible(false);
-        }
-
-        prevSniffActive = sniffActive;
-
-        if (!active) return;
-
-        // Advance expansion counter
-        if (pulseTick < GROW_TICKS) {
-            pulseTick++;
-        }
-
-        // Compute radius: linearly expand from 0 → MAX_RADIUS over GROW_TICKS
-        double radius = MAX_RADIUS * ((double) pulseTick / GROW_TICKS);
-
-        // Centre the circle on the player's tile centre
         double cx = playerCol * TILE + TILE / 2.0;
         double cy = playerRow * TILE + TILE / 2.0;
 
-        pulseCircle.setCenterX(cx);
-        pulseCircle.setCenterY(cy);
-        pulseCircle.setRadius(radius);
-        pulseCircle.setVisible(true);
+        // Rising edge — start cycling, fire the activation burst.
+        if (sniffActive && !prevSniffActive) {
+            active = true;
+            innerTick = 0;
+            outerTick = -CYCLE_TICKS / 2;
+            spawnCounter = 0;
+            spawnInitialBurst(cx, cy);
+        }
+        // Falling edge — hide rings; particles keep fading.
+        if (!sniffActive && prevSniffActive) {
+            active = false;
+            innerRing.setVisible(false);
+            outerRing.setVisible(false);
+        }
+        prevSniffActive = sniffActive;
+
+        if (active) {
+            innerTick++;
+            outerTick++;
+            updateRing(innerRing, innerTick, cx, cy);
+            updateRing(outerRing, outerTick, cx, cy);
+
+            spawnCounter++;
+            if (spawnCounter >= PARTICLE_SPAWN_INTERVAL) {
+                spawnCounter = 0;
+                spawnScentDrift(cx, cy);
+            }
+        }
+
+        // Always advance particles so they fade after sniff ends.
+        Iterator<ScentParticle> it = particles.iterator();
+        while (it.hasNext()) {
+            ScentParticle p = it.next();
+            p.tick();
+            if (p.dead()) {
+                particleLayer.getChildren().remove(p.shape);
+                it.remove();
+            }
+        }
+    }
+
+    private void updateRing(Circle ring, int tick, double cx, double cy) {
+        if (tick < 0) {
+            ring.setVisible(false);
+            return;
+        }
+        double progress = (tick % CYCLE_TICKS) / (double) CYCLE_TICKS;
+        ring.setCenterX(cx);
+        ring.setCenterY(cy);
+        ring.setRadius(MAX_RADIUS * progress);
+        ring.setStroke(Color.rgb(200, 255, 200, (1.0 - progress) * 0.7));
+        ring.setVisible(true);
+    }
+
+    private void spawnInitialBurst(double cx, double cy) {
+        for (int i = 0; i < 14; i++) {
+            double a = rng.nextDouble() * Math.PI * 2;
+            double sp = 0.9 + rng.nextDouble() * 1.7;
+            spawnParticle(cx, cy, Math.cos(a) * sp, Math.sin(a) * sp,
+                          1.6 + rng.nextDouble() * 1.2, 28 + rng.nextInt(10));
+        }
+    }
+
+    private void spawnScentDrift(double cx, double cy) {
+        for (int i = 0; i < 2; i++) {
+            double a = rng.nextDouble() * Math.PI * 2;
+            double sp = 0.4 + rng.nextDouble() * 0.9;
+            spawnParticle(cx, cy, Math.cos(a) * sp, Math.sin(a) * sp,
+                          1.4 + rng.nextDouble(), 22 + rng.nextInt(12));
+        }
+    }
+
+    private void spawnParticle(double x, double y, double vx, double vy,
+                               double radius, int life) {
+        Circle s = new Circle(x, y, radius);
+        s.setFill(Color.rgb(180, 240, 200, 0.6));
+        particles.add(new ScentParticle(s, x, y, vx, vy, life));
+        particleLayer.getChildren().add(s);
+    }
+
+    private static Circle makeRing() {
+        Circle c = new Circle(0, 0, 0);
+        c.setFill(Color.TRANSPARENT);
+        c.setStroke(Color.rgb(200, 255, 200, 0.5));
+        c.setStrokeWidth(2.0);
+        c.setVisible(false);
+        return c;
+    }
+
+    private static final class ScentParticle {
+        final Circle shape;
+        double x, y, vx, vy;
+        int life;
+        final int max;
+
+        ScentParticle(Circle s, double x, double y, double vx, double vy, int life) {
+            this.shape = s;
+            this.x = x; this.y = y;
+            this.vx = vx; this.vy = vy;
+            this.life = life;
+            this.max = life;
+        }
+
+        void tick() {
+            x += vx;
+            y += vy;
+            vx *= 0.95;
+            vy *= 0.95;
+            life--;
+            shape.setCenterX(x);
+            shape.setCenterY(y);
+            shape.setOpacity(Math.max(0, (double) life / max));
+        }
+
+        boolean dead() {
+            return life <= 0;
+        }
     }
 }

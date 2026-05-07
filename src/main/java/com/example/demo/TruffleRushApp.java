@@ -273,6 +273,7 @@ public class TruffleRushApp extends Application {
         effects.setHitStopEnabled(meta.isHitStopEnabled());
 
         obstacleRenderer.render(map, biome);
+        gridRenderer.setLevel(map, biome);
 
         // Achievements: route the toast through the side panel and play a chime.
         achievements.setOnUnlock(a -> {
