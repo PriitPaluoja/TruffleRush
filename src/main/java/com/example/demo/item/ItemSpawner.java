@@ -124,7 +124,26 @@ public class ItemSpawner {
         if (itemGrid[item.getCol()][item.getRow()] == item) {
             itemGrid[item.getCol()][item.getRow()] = null;
         }
+        items.remove(item);
         uncollectedCount--;
+    }
+
+    /**
+     * Registers an item that is owned by an external manager (golden truffle,
+     * super acorn) so the spatial grid reflects its presence. The item is not
+     * added to the regular {@code items} list — its lifecycle stays with the
+     * external manager. {@link #getItemAt(int, int)} already filters out
+     * collected items, so no explicit unregister is needed: when the manager
+     * despawns or hands off the item by calling {@code item.collect()}, lookups
+     * stop seeing it and the slot is overwritten by the next spawn.
+     */
+    public void registerExternalItem(Item item) {
+        if (item == null) return;
+        int c = item.getCol();
+        int r = item.getRow();
+        if (c < 0 || c >= itemGrid.length) return;
+        if (r < 0 || r >= itemGrid[0].length) return;
+        itemGrid[c][r] = item;
     }
 
     /**

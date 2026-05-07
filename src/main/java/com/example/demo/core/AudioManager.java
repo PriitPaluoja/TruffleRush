@@ -7,6 +7,9 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.FloatControl;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * Lightweight synthesized audio. Generates simple PCM tones at startup so we
@@ -31,6 +34,16 @@ public class AudioManager {
     private final Map<Sfx, byte[]> samples = new EnumMap<>(Sfx.class);
     private boolean enabled = true;
     private volatile double masterVolume = 1.0;
+    /** Cached dB attenuation for {@link #masterVolume}; recomputed only on volume change. */
+    private volatile double cachedDbGain = 0.0;
+
+    private static final ThreadFactory AUDIO_THREAD_FACTORY = r -> {
+        Thread t = new Thread(r, "TruffleRush-Audio");
+        t.setDaemon(true);
+        return t;
+    };
+    private final ExecutorService audioPool =
+            Executors.newFixedThreadPool(4, AUDIO_THREAD_FACTORY);
 
     public AudioManager() {
         try {
@@ -50,23 +63,26 @@ public class AudioManager {
 
     public void play(Sfx sfx) {
         if (!enabled) return;
-        if (masterVolume <= 0.0) return;
+        double vol = masterVolume;
+        if (vol <= 0.0) return;
         byte[] data = samples.get(sfx);
         if (data == null) return;
-        // Snapshot current volume so a slider tweak mid-playback can't desync.
-        double vol = masterVolume;
-        Thread t = new Thread(() -> playRaw(data, vol));
-        t.setDaemon(true);
-        t.start();
+        // Snapshot dB so a slider tweak mid-playback can't desync.
+        double dbGain = cachedDbGain;
+        try {
+            audioPool.submit(() -> playRaw(data, vol, dbGain));
+        } catch (Throwable ignored) {
+            // Pool rejected (e.g. shutting down) — fail silent.
+        }
     }
 
-    private void playRaw(byte[] data, double volume) {
+    private void playRaw(byte[] data, double volume, double dbGain) {
         try {
             AudioFormat fmt = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
             DataLine.Info info = new DataLine.Info(Clip.class, fmt);
             try (Clip clip = (Clip) AudioSystem.getLine(info)) {
                 clip.open(fmt, data, 0, data.length);
-                applyVolume(clip, volume);
+                applyVolume(clip, volume, dbGain);
                 clip.start();
                 while (clip.isRunning()) {
                     Thread.sleep(5);
@@ -77,12 +93,11 @@ public class AudioManager {
         }
     }
 
-    private static void applyVolume(Clip clip, double volume) {
+    private static void applyVolume(Clip clip, double volume, double dbGain) {
         if (volume >= 1.0) return;
         try {
-            // Linear 0..1 → dB attenuation.
             FloatControl gain = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-            float db = (volume <= 0.0001) ? gain.getMinimum() : (float) (20.0 * Math.log10(volume));
+            float db = (float) dbGain;
             db = Math.max(gain.getMinimum(), Math.min(gain.getMaximum(), db));
             gain.setValue(db);
         } catch (IllegalArgumentException ignored) {
@@ -142,6 +157,9 @@ public class AudioManager {
 
     public double getMasterVolume() { return masterVolume; }
     public void setMasterVolume(double v) {
-        this.masterVolume = Math.max(0.0, Math.min(1.0, v));
+        double clamped = Math.max(0.0, Math.min(1.0, v));
+        this.masterVolume = clamped;
+        // Linear 0..1 → dB attenuation. Cached so per-clip playback skips log10.
+        this.cachedDbGain = (clamped <= 0.0001) ? -80.0 : 20.0 * Math.log10(clamped);
     }
 }

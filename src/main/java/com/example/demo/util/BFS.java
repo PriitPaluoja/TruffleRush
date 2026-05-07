@@ -3,8 +3,8 @@ package com.example.demo.util;
 import com.example.demo.entity.Direction;
 import com.example.demo.world.GameMap;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -125,17 +125,18 @@ public final class BFS {
             return Collections.emptyList();
         }
 
-        LinkedList<Direction> path = new LinkedList<>();
+        // Walk backwards via cameFrom into a buffer, then reverse the buffer
+        // in place so callers can iterate forward without LinkedList overhead.
+        ArrayList<Direction> path = new ArrayList<>();
         int c = targetCol;
         int r = targetRow;
-
         while (c != startCol || r != startRow) {
             Direction dir = ws.cameFrom[c][r];
-            path.addFirst(dir);
+            path.add(dir);
             c -= dir.dc;
             r -= dir.dr;
         }
-
+        Collections.reverse(path);
         return path;
     }
 }

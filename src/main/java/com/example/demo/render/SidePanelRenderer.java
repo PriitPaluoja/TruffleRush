@@ -40,6 +40,8 @@ public class SidePanelRenderer {
     private final List<String> eventLog = new ArrayList<>();
 
     private static final int MAX_EVENTS = 6;
+    /** Single-line truncation budget; the panel is only ~104 px wide at 10 pt. */
+    private static final int MAX_LOG_CHARS = 18;
 
     public SidePanelRenderer(int mapWidth, int mapHeight) {
         this.panelX = mapWidth;
@@ -84,7 +86,6 @@ public class SidePanelRenderer {
             t.setFill(EVENT_COLOR);
             t.setX(x);
             t.setY(y + i * 14);
-            t.setWrappingWidth(PANEL_WIDTH - PADDING * 2);
             eventTexts.add(t);
             group.getChildren().add(t);
         }
@@ -118,10 +119,16 @@ public class SidePanelRenderer {
     }
 
     public void addEvent(String message) {
-        eventLog.add(message);
+        eventLog.add(truncate(message));
         if (eventLog.size() > 50) {
             eventLog.remove(0);
         }
+    }
+
+    private static String truncate(String s) {
+        if (s == null) return "";
+        if (s.length() <= MAX_LOG_CHARS) return s;
+        return s.substring(0, MAX_LOG_CHARS - 1) + "…";
     }
 
     private Text makeLabel(String text, double x, double y) {

@@ -6,6 +6,11 @@ import com.example.demo.entity.PlayerPig;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Polygon;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
 
 /**
  * Manages the JavaFX scene-graph node that visually represents a {@link Pig}.
@@ -33,6 +38,17 @@ public class PigRenderer {
     private final Circle shieldHalo;
     private final Circle magnetHalo;
 
+    // --- Speech bubble (rival taunts, biome flavor, etc.) ---
+    private static final int SPEECH_DEFAULT_TICKS = 150; // ~2.5 s at 60 fps
+    private static final double SPEECH_FONT_SIZE = 10;
+    private static final double SPEECH_PAD_X = 6;
+    private static final double SPEECH_PAD_Y = 3;
+    private final Group speechGroup = new Group();
+    private final Rectangle speechBg = new Rectangle();
+    private final Polygon speechTail = new Polygon();
+    private final Text speechText = new Text();
+    private int speechTicks;
+
     private double lastRadius;
     private Direction lastFacing;
 
@@ -59,7 +75,21 @@ public class PigRenderer {
         this.bodyLayer = new Group();
         bodyLayer.getChildren().setAll(initialBody.getChildren());
 
-        pigGroup.getChildren().addAll(auraLayer, bodyLayer);
+        // Speech bubble — hidden until showSpeech() is called.
+        speechBg.setFill(Color.rgb(255, 255, 255, 0.92));
+        speechBg.setStroke(Color.rgb(40, 40, 40, 0.85));
+        speechBg.setStrokeWidth(1.0);
+        speechBg.setArcWidth(8);
+        speechBg.setArcHeight(8);
+        speechTail.setFill(Color.rgb(255, 255, 255, 0.92));
+        speechTail.setStroke(Color.rgb(40, 40, 40, 0.85));
+        speechTail.setStrokeWidth(1.0);
+        speechText.setFont(Font.font("System", FontWeight.NORMAL, SPEECH_FONT_SIZE));
+        speechText.setFill(Color.rgb(20, 20, 20));
+        speechGroup.getChildren().addAll(speechBg, speechTail, speechText);
+        speechGroup.setVisible(false);
+
+        pigGroup.getChildren().addAll(auraLayer, bodyLayer, speechGroup);
         repositionGroup();
     }
 
@@ -93,7 +123,48 @@ public class PigRenderer {
         }
 
         pigGroup.setOpacity(pig.isStunned() ? 0.5 : 1.0);
+
+        if (speechTicks > 0) {
+            speechTicks--;
+            if (speechTicks == 0) {
+                speechGroup.setVisible(false);
+            }
+        }
+
         repositionGroup();
+    }
+
+    /**
+     * Pops a small speech bubble above the pig with the given line of text.
+     * Bubble auto-hides after about 2.5 seconds (or when replaced by another
+     * call). Call only on AI pigs — the player rarely needs one.
+     */
+    public void showSpeech(String text) {
+        if (text == null || text.isEmpty()) return;
+        speechText.setText(text);
+        // JavaFX Text reports its layout bounds once a font is set.
+        double textW = speechText.getLayoutBounds().getWidth();
+        double textH = speechText.getLayoutBounds().getHeight();
+        double bgW = textW + SPEECH_PAD_X * 2;
+        double bgH = textH + SPEECH_PAD_Y * 2;
+        // Anchor: bubble bottom-centre sits just above the pig body.
+        double bgX = -bgW / 2.0;
+        double bgY = -lastRadius - bgH - 6;
+        speechBg.setX(bgX);
+        speechBg.setY(bgY);
+        speechBg.setWidth(bgW);
+        speechBg.setHeight(bgH);
+        // Text inside bubble (Text's y is its baseline).
+        speechText.setX(bgX + SPEECH_PAD_X);
+        speechText.setY(bgY + SPEECH_PAD_Y + textH * 0.8);
+        // Tail: small triangle pointing down to the pig's head.
+        speechTail.getPoints().setAll(
+            -3.0, bgY + bgH - 0.5,
+             3.0, bgY + bgH - 0.5,
+             0.0, bgY + bgH + 5.0
+        );
+        speechGroup.setVisible(true);
+        speechTicks = SPEECH_DEFAULT_TICKS;
     }
 
     private static Circle makeHalo(double radius, Color fill, Color stroke, double strokeWidth) {

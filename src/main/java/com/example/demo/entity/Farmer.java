@@ -45,6 +45,7 @@ public class Farmer {
         }
 
         // Spawn escape hole far from farmer
+        boolean placed = false;
         for (int i = 0; i < MAX_SPAWN_ATTEMPTS; i++) {
             int ec = rng.nextInt(map.getColumns());
             int er = rng.nextInt(map.getRows());
@@ -53,14 +54,19 @@ public class Farmer {
                 if (dist >= 10) {
                     escapeCol = ec;
                     escapeRow = er;
+                    placed = true;
                     break;
                 }
             }
-            if (i == MAX_SPAWN_ATTEMPTS - 1) {
-                // Fallback: opposite corner
-                escapeCol = (col < map.getColumns() / 2) ? map.getColumns() - 2 : 1;
-                escapeRow = (row < map.getRows() / 2) ? map.getRows() - 2 : 1;
-            }
+        }
+        if (!placed) {
+            // Fallback: opposite corner; if that's not passable, scan outward
+            // for the first passable cell so the round stays winnable.
+            int targetCol = (col < map.getColumns() / 2) ? map.getColumns() - 2 : 1;
+            int targetRow = (row < map.getRows() / 2) ? map.getRows() - 2 : 1;
+            int[] found = nearestPassable(map, targetCol, targetRow);
+            escapeCol = found[0];
+            escapeRow = found[1];
         }
 
         this.active = true;
@@ -114,6 +120,31 @@ public class Farmer {
                 active = false;
             }
         }
+    }
+
+    /**
+     * Returns the nearest passable cell starting from (startCol, startRow)
+     * via an expanding-ring scan. Falls back to the start coordinate if the
+     * scan cannot find anything (which only happens on a degenerate map).
+     */
+    private static int[] nearestPassable(GameMap map, int startCol, int startRow) {
+        if (map.isInBounds(startCol, startRow) && map.isPassable(startCol, startRow)) {
+            return new int[]{startCol, startRow};
+        }
+        int maxRadius = Math.max(map.getColumns(), map.getRows());
+        for (int r = 1; r < maxRadius; r++) {
+            for (int dc = -r; dc <= r; dc++) {
+                for (int dr = -r; dr <= r; dr++) {
+                    if (Math.abs(dc) != r && Math.abs(dr) != r) continue; // ring border only
+                    int c = startCol + dc;
+                    int rr = startRow + dr;
+                    if (map.isInBounds(c, rr) && map.isPassable(c, rr)) {
+                        return new int[]{c, rr};
+                    }
+                }
+            }
+        }
+        return new int[]{startCol, startRow};
     }
 
     public int getCol() { return col; }

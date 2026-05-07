@@ -5,10 +5,8 @@ import com.example.demo.core.AchievementTracker;
 import com.example.demo.core.AudioManager;
 import com.example.demo.core.Boon;
 import com.example.demo.core.BoonCombo;
-import com.example.demo.core.EventBus;
 import com.example.demo.core.Flavor;
 import com.example.demo.core.HeatModifier;
-import com.example.demo.core.GameEvent;
 import com.example.demo.core.GameSession;
 import com.example.demo.core.LevelType;
 import com.example.demo.core.MetaProgression;
@@ -179,9 +177,6 @@ public class TruffleRushApp extends Application {
         // --- Risk zones (wolf dens) ---
         Set<Long> wolfDens = pickWolfDens(map, new java.util.Random(levelSeed ^ 0x5AFEL), 3);
 
-        // --- Event bus ---
-        EventBus eventBus = new EventBus();
-
         // --- Weather ---
         WeatherSystem weatherSystem = new WeatherSystem();
 
@@ -254,6 +249,12 @@ public class TruffleRushApp extends Application {
         PigRenderer hoggartRenderer  = new PigRenderer(hoggart);
         PigRenderer whiskersRenderer = new PigRenderer(whiskers);
         PigRenderer brambleRenderer  = new PigRenderer(bramble);
+        // Lookup so the taunt-fire site can route a line to the correct pig's bubble.
+        java.util.Map<Pig, PigRenderer> pigRenderers = new java.util.HashMap<>();
+        pigRenderers.put(player, playerRenderer);
+        pigRenderers.put(hoggart, hoggartRenderer);
+        pigRenderers.put(whiskers, whiskersRenderer);
+        pigRenderers.put(bramble, brambleRenderer);
         SniffRenderer         sniffRenderer     = new SniffRenderer();
         WolfRenderer          wolfRenderer      = new WolfRenderer();
         FarmerRenderer        farmerRenderer    = new FarmerRenderer();
@@ -484,6 +485,9 @@ public class TruffleRushApp extends Application {
         gridRenderer.update(0.0);
 
         // --- Game loop ---
+        // Reusable buffer for the per-frame "regular items + super acorn" render
+        // list. Avoids allocating a fresh ArrayList 60 times per second.
+        final List<Item> renderItems = new ArrayList<>();
         activeTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
@@ -556,7 +560,7 @@ public class TruffleRushApp extends Application {
                             continue;
                         }
                         double weightDelta = type.weightDelta;
-                        if (eventMgr.isFrenzyActive()) weightDelta *= 2;
+                        if (eventMgr.isFrenzyActive() && !type.isHazard) weightDelta *= 2;
                         // Boon: Truffle Hunter — truffles 2x, acorn/mushroom 0
                         if (pig == player && session.hasBoon(Boon.TRUFFLE_HUNTER)) {
                             if (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE) {
@@ -605,9 +609,13 @@ public class TruffleRushApp extends Application {
                         }
                         pig.addWeight(weightDelta);
                         // Rival narrative taunt (N1) when an AI pig snags a truffle.
+                        // Shown as a speech bubble above the pig, NOT in the log.
                         if (pig != player && (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE)) {
                             String taunt = Flavor.tauntForTruffle(pig.getName());
-                            if (!taunt.isEmpty()) sidePanel.addEvent(taunt);
+                            if (!taunt.isEmpty()) {
+                                PigRenderer pr = pigRenderers.get(pig);
+                                if (pr != null) pr.showSpeech(taunt);
+                            }
                         }
                         // Any non-shielded hazard breaks the player's combo.
                         if (pig == player && type.isHazard && !ironBelly) {
@@ -662,15 +670,13 @@ public class TruffleRushApp extends Application {
                             }
                         }
                         itemSpawner.collectItem(item);
-                        eventBus.publish(GameEvent.ITEM_COLLECTED, item);
-                        eventBus.publish(GameEvent.WEIGHT_CHANGED, pig);
                     }
                 }
 
                 // --- Golden Truffle ---
                 Item spawned = goldenMgr.tick(t, map, allPigs);
                 if (spawned != null) {
-                    eventBus.publish(GameEvent.GOLDEN_TRUFFLE_SPAWNED, spawned);
+                    itemSpawner.registerExternalItem(spawned);
                 }
                 Item gt = goldenMgr.getGoldenTruffle();
                 if (gt != null && !gt.isCollected()) {
@@ -688,7 +694,6 @@ public class TruffleRushApp extends Application {
                                 achievements.unlock(Achievement.GOLDEN_TRUFFLE);
                             }
                             goldenMgr.onCollected();
-                            eventBus.publish(GameEvent.ITEM_COLLECTED, gt);
                             break;
                         }
                     }
@@ -696,7 +701,10 @@ public class TruffleRushApp extends Application {
 
                 // --- Super Acorn ---
                 Item sa = superAcornMgr.tick(t, map);
-                if (sa != null) sidePanel.addEvent("Super Acorn spawned!");
+                if (sa != null) {
+                    itemSpawner.registerExternalItem(sa);
+                    sidePanel.addEvent("Super Acorn spawned!");
+                }
                 Item saItem = superAcornMgr.getSuperAcorn();
                 if (saItem != null && !saItem.isCollected()) {
                     if (player.getCol() == saItem.getCol() && player.getRow() == saItem.getRow()) {
@@ -951,10 +959,11 @@ public class TruffleRushApp extends Application {
                 brambleRenderer.update();
 
                 // --- Item render ---
-                List<Item> allItems = new ArrayList<>(itemSpawner.getItems());
+                renderItems.clear();
+                renderItems.addAll(itemSpawner.getItems());
                 Item saRender = superAcornMgr.getSuperAcorn();
-                if (saRender != null && !saRender.isCollected()) allItems.add(saRender);
-                itemRenderer.update(allItems, map, allPigs,
+                if (saRender != null && !saRender.isCollected()) renderItems.add(saRender);
+                itemRenderer.update(renderItems, map, allPigs,
                     player.isSniffActive(), player.getCol(), player.getRow());
 
                 // --- Sniff render ---

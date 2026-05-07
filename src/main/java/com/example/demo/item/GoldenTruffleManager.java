@@ -13,16 +13,6 @@ import java.util.Random;
  * the final 30% of the round duration.  If uncollected, it despawns after
  * 480 ticks (~8 seconds at 60 ticks/s).
  *
- * <p>Usage:
- * <pre>
- *   GoldenTruffleManager gtm = new GoldenTruffleManager(roundTicks, map, allPigs);
- *
- *   // In the game loop:
- *   Item spawned = gtm.tick(currentTick, map, allPigs);
- *   if (spawned != null) {
- *       eventBus.publish(GameEvent.GOLDEN_TRUFFLE_SPAWNED, spawned);
- *   }
- * </pre>
  */
 public class GoldenTruffleManager {
 

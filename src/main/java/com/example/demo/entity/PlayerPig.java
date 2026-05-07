@@ -187,7 +187,6 @@ public class PlayerPig extends Pig {
     public boolean hasMagnet() { return magnetTicks > 0; }
     public boolean isSuperPig() { return superPigActive; }
     public int getSpeedBoostTicks() { return speedBoostTicks; }
-    public int getShieldTicks() { return hasShield ? 1 : 0; }
     public int getMagnetTicks() { return magnetTicks; }
     public int getSuperPigTicks() { return superPigTicks; }
 

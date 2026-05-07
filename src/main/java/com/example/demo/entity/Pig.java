@@ -212,8 +212,6 @@ public class Pig {
         this.externalSpeedMult = Math.max(0.01, mult);
     }
 
-    public double getExternalSpeedMult() { return externalSpeedMult; }
-
     /** Stuns the pig for the given number of ticks. */
     public void stun(int ticks) { this.stunned = true; this.stunTicks = ticks; }
 

@@ -72,17 +72,18 @@ public class MapGenerator {
      * @param map the map to populate; any existing obstacles are overwritten
      */
     public void generate(GameMap map) {
-        long attempt = 0;
-        while (true) {
+        // Bounded so a pathological density (e.g. heat + GAUNTLET + Swamp at
+        // very high level) cannot freeze startup. If we hit the cap we accept
+        // the last attempt with obstacles cleared — connectivity then trivially
+        // holds, at the cost of a sparse map for that one round.
+        final int MAX_ATTEMPTS = 1000;
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             clearMap(map);
             Random rng = new Random(seed + attempt);
             placeObstacles(map, rng);
-
-            if (FloodFill.isFullyConnected(map)) {
-                break;
-            }
-            attempt++;
+            if (FloodFill.isFullyConnected(map)) return;
         }
+        clearMap(map);
     }
 
     // -------------------------------------------------------------------------
