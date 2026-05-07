@@ -1,8 +1,10 @@
 package com.example.demo.render;
 
+import com.example.demo.core.HeatModifier;
 import com.example.demo.core.MetaProgression;
 import com.example.demo.core.Perk;
 import javafx.scene.Group;
+import javafx.scene.control.TextField;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
@@ -25,6 +27,12 @@ public class ShopOverlay {
 
     private final Text bankText;
     private final List<PerkRow> rows = new ArrayList<>();
+    private final TextField pigNameField;
+    private final Group heatPanel = new Group();
+    private final Text heatLevelText;
+    private final Text heatModifiersText;
+    private final Text heatRewardText;
+    private int currentHeat;
     private Runnable onStart;
     private Runnable onDailyRun;
 
@@ -54,9 +62,33 @@ public class ShopOverlay {
         centerText(hint, 124);
         group.getChildren().add(hint);
 
+        // Pig-name field (Narrative N3).
+        Text nameLabel = new Text("Pig name:");
+        nameLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+        nameLabel.setFill(Color.rgb(220, 220, 220));
+        double nameRowY = 150;
+        nameLabel.setX((width / 2.0) - 130);
+        nameLabel.setY(nameRowY + 4);
+        group.getChildren().add(nameLabel);
+
+        pigNameField = new TextField();
+        pigNameField.setPromptText("Truffles");
+        pigNameField.setLayoutX((width / 2.0) - 50);
+        pigNameField.setLayoutY(nameRowY - 14);
+        pigNameField.setPrefWidth(180);
+        // Persist on every edit so the next run uses the new name even if the
+        // player skips the daily-run / start buttons.
+        pigNameField.textProperty().addListener((obs, oldV, newV) -> {
+            if (meta != null) {
+                meta.setPigName(newV);
+                meta.save();
+            }
+        });
+        group.getChildren().add(pigNameField);
+
         // Perk rows
         Perk[] perks = Perk.values();
-        double rowY = 160;
+        double rowY = 188;
         double rowH = 56;
         double rowW = 580;
         double rowX = (width - rowW) / 2.0;
@@ -87,6 +119,56 @@ public class ShopOverlay {
         startText.setOnMouseClicked(e -> { if (onStart != null) onStart.run(); });
         group.getChildren().addAll(startBg, startText);
 
+        // Heat panel (S1) — placed left of the daily/start buttons. Hidden until clearedTen.
+        heatLevelText = new Text("Heat: 0");
+        heatLevelText.setFont(Font.font("System", FontWeight.BOLD, 18));
+        heatLevelText.setFill(Color.rgb(255, 130, 80));
+        heatModifiersText = new Text("");
+        heatModifiersText.setFont(Font.font("System", FontWeight.NORMAL, 11));
+        heatModifiersText.setFill(Color.rgb(220, 200, 180));
+        heatRewardText = new Text("");
+        heatRewardText.setFont(Font.font("System", FontWeight.NORMAL, 11));
+        heatRewardText.setFill(Color.rgb(255, 200, 100));
+
+        double heatX = 32;
+        double heatY = btnY - 14;
+        heatLevelText.setX(heatX);
+        heatLevelText.setY(heatY);
+        heatModifiersText.setX(heatX);
+        heatModifiersText.setY(heatY + 18);
+        heatRewardText.setX(heatX);
+        heatRewardText.setY(heatY + 32);
+
+        double btnSide = 28;
+        Rectangle minusBg = new Rectangle(heatX + 70, heatY - 22, btnSide, btnSide);
+        minusBg.setFill(Color.rgb(80, 50, 50));
+        minusBg.setArcWidth(6);
+        minusBg.setArcHeight(6);
+        Text minusText = new Text("−");
+        minusText.setFont(Font.font("System", FontWeight.BOLD, 18));
+        minusText.setFill(Color.WHITE);
+        minusText.setX(heatX + 78);
+        minusText.setY(heatY - 4);
+        minusBg.setOnMouseClicked(e -> setHeat(currentHeat - 1));
+        minusText.setOnMouseClicked(e -> setHeat(currentHeat - 1));
+
+        Rectangle plusBg = new Rectangle(heatX + 104, heatY - 22, btnSide, btnSide);
+        plusBg.setFill(Color.rgb(140, 60, 60));
+        plusBg.setArcWidth(6);
+        plusBg.setArcHeight(6);
+        Text plusText = new Text("+");
+        plusText.setFont(Font.font("System", FontWeight.BOLD, 18));
+        plusText.setFill(Color.WHITE);
+        plusText.setX(heatX + 113);
+        plusText.setY(heatY - 4);
+        plusBg.setOnMouseClicked(e -> setHeat(currentHeat + 1));
+        plusText.setOnMouseClicked(e -> setHeat(currentHeat + 1));
+
+        heatPanel.getChildren().addAll(heatLevelText, heatModifiersText, heatRewardText,
+                                        minusBg, minusText, plusBg, plusText);
+        heatPanel.setVisible(false);
+        group.getChildren().add(heatPanel);
+
         // Daily-run button
         double dailyW = 200, dailyH = 36;
         double dailyX = (width - dailyW) / 2.0;
@@ -114,8 +196,48 @@ public class ShopOverlay {
 
     public void show(MetaProgression meta) {
         this.meta = meta;
+        // Skip listener-triggered save while we sync the field with the saved name.
+        String saved = meta.getPigName();
+        if (!pigNameField.getText().equals(saved)) {
+            pigNameField.setText(saved);
+        }
+        // Heat panel visible only after the player has cleared level 10.
+        heatPanel.setVisible(meta.hasClearedTen());
+        currentHeat = Math.max(0, Math.min(HeatModifier.maxHeat(), meta.getLastHeatPicked()));
+        refreshHeat();
         refresh();
         group.setVisible(true);
+    }
+
+    public int getCurrentHeat() { return currentHeat; }
+
+    private void setHeat(int v) {
+        int clamped = Math.max(0, Math.min(HeatModifier.maxHeat(), v));
+        if (clamped == currentHeat) return;
+        currentHeat = clamped;
+        if (meta != null) {
+            meta.setLastHeatPicked(currentHeat);
+            meta.save();
+        }
+        refreshHeat();
+    }
+
+    private void refreshHeat() {
+        heatLevelText.setText("Heat: " + currentHeat + "/" + HeatModifier.maxHeat());
+        StringBuilder sb = new StringBuilder();
+        if (currentHeat == 0) {
+            sb.append("(no modifiers)");
+        } else {
+            HeatModifier[] all = HeatModifier.values();
+            for (int i = 0; i < currentHeat; i++) {
+                if (i > 0) sb.append(" • ");
+                sb.append(all[i].displayName);
+            }
+        }
+        heatModifiersText.setText(sb.toString());
+        int rewardPct = (int) Math.round(currentHeat * 15);
+        heatRewardText.setText(rewardPct == 0 ? "Bank reward x1.00"
+            : "Bank reward x1." + (rewardPct < 100 ? rewardPct : rewardPct));
     }
 
     public void hide() { group.setVisible(false); }

@@ -20,7 +20,10 @@ public enum Achievement {
     FIRST_BOON            ("Charmed",            "Pick your first boon"),
     GLUTTON_PACIFIST_RUN  ("Lazy Vegan",         "Win a level with Glutton + Pacifist active"),
     DAILY_RUN             ("Daily Grind",        "Finish a daily run"),
-    MAX_PERK              ("Maxed Out",          "Buy any perk to its max level");
+    MAX_PERK              ("Maxed Out",          "Buy any perk to its max level"),
+    COMBO_DISCOVERED_FIRST("Synergist",          "Discover your first boon combo"),
+    COMBO_DISCOVERED_ALL  ("Combo Connoisseur",  "Discover every boon combo"),
+    TRUFFLE_KING          ("Truffle King",       "Clear level 10");
 
     public final String displayName;
     public final String description;

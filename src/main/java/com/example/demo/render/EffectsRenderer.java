@@ -30,6 +30,10 @@ public class EffectsRenderer {
     /** Remaining hit-stop ticks. While > 0, the game loop should skip simulation. */
     private int hitStopTicks;
 
+    /** Settings toggles wired from the pause overlay. Default to on. */
+    private boolean shakeEnabled = true;
+    private boolean hitStopEnabled = true;
+
     public EffectsRenderer() {
         group.getChildren().add(particleLayer);
     }
@@ -55,6 +59,7 @@ public class EffectsRenderer {
 
     /** Trigger a screen shake. {@code intensity} ≈ pixel amplitude. */
     public void shake(int ticks, double intensity) {
+        if (!shakeEnabled) return;
         if (ticks > shakeTicks) {
             shakeTicks = ticks;
             shakeIntensity = intensity;
@@ -63,7 +68,18 @@ public class EffectsRenderer {
 
     /** Pause simulation for {@code ticks} frames (used on big events). */
     public void hitStop(int ticks) {
+        if (!hitStopEnabled) return;
         if (ticks > hitStopTicks) hitStopTicks = ticks;
+    }
+
+    public void setShakeEnabled(boolean v) {
+        this.shakeEnabled = v;
+        if (!v) shakeTicks = 0;
+    }
+
+    public void setHitStopEnabled(boolean v) {
+        this.hitStopEnabled = v;
+        if (!v) hitStopTicks = 0;
     }
 
     /** True if the game loop should freeze this frame. Decrements the counter. */

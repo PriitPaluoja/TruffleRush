@@ -31,6 +31,10 @@ public class GameSession {
     private boolean dailyRun;
     /** Seed used to drive map and item randomness. 0 = use system time. */
     private long runSeed;
+    /** Endless mode (S3) — set after the level-10 victory if the player chooses Continue. */
+    private boolean endless;
+    /** Heat / ascension level (S1). 0 disables; 1..N enables the first N modifiers. */
+    private int heatLevel;
 
     // --- Run statistics (for the summary screen) ---
     private int itemsCollected;
@@ -69,11 +73,29 @@ public class GameSession {
     public java.util.List<Boon> getActiveBoons() { return activeBoons; }
     public void addBoon(Boon b) { activeBoons.add(b); }
     public boolean hasBoon(Boon b) { return activeBoons.contains(b); }
+    public boolean hasComboActive(BoonCombo combo) { return combo.isActive(activeBoons); }
 
     public boolean isDailyRun() { return dailyRun; }
     public void setDailyRun(boolean daily) { this.dailyRun = daily; }
     public long getRunSeed() { return runSeed; }
     public void setRunSeed(long seed) { this.runSeed = seed; }
+
+    public boolean isEndless() { return endless; }
+    public void setEndless(boolean v) { this.endless = v; }
+
+    public int getHeatLevel() { return heatLevel; }
+    public void setHeatLevel(int v) { this.heatLevel = Math.max(0, Math.min(HeatModifier.maxHeat(), v)); }
+    public boolean isHeatActive(HeatModifier m) {
+        return HeatModifier.isActive(heatLevel, m);
+    }
+    /** Score / banked-truffle multiplier from Heat: 1 + 0.15 × heat. */
+    public double getHeatRewardMultiplier() {
+        return 1.0 + 0.15 * heatLevel;
+    }
+    /** Number of endless levels beyond the level-10 victory (0 if not in endless or still on level 10). */
+    public int getEndlessDepth() {
+        return endless ? Math.max(0, level - 10) : 0;
+    }
 
     public int getLevel() { return level; }
     public int getScore() { return score; }
@@ -151,6 +173,10 @@ public class GameSession {
         double base = 0.008 + (level - 1) * 0.001;
         base -= 0.001 * getPerkLevel(Perk.SLOWER_DECAY);
         if (hasBoon(Boon.GLUTTON)) base = 0;
+        // Endless mode: each level past 10 ramps decay by 5%.
+        if (endless && level > 10) {
+            base *= Math.pow(1.05, level - 10);
+        }
         return Math.max(0, base);
     }
 

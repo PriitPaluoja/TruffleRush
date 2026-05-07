@@ -38,6 +38,9 @@ public class HudRenderer {
     private final Text sniffText;
     private final Text powerUpText;
     private final Text streakText;
+    private final Rectangle comboTrack;
+    private final Rectangle comboFill;
+    private final Text comboText;
 
     private String lastWeather = "";
     private int lastTimerTicks = -1;
@@ -46,6 +49,9 @@ public class HudRenderer {
     private String lastPowerUpString = "";
     private boolean lastPowerUpSuper;
     private int lastStreakSeconds = -1;
+    private int lastComboCount = -1;
+    private int lastComboTimer = -1;
+    private int lastComboTier = -1;
 
     public HudRenderer(int mapWidth) {
         background = new Rectangle(0, 0, mapWidth, HUD_HEIGHT);
@@ -57,7 +63,21 @@ public class HudRenderer {
         powerUpText = makeText("", Color.rgb(255, 215, 0));
         streakText  = makeText("", STREAK_COLOR);
 
-        group.getChildren().addAll(background, weatherText, timerText, sniffText, powerUpText, streakText);
+        // Combo meter (positioned bottom-row alongside the streak badge).
+        comboTrack = new Rectangle(0, 0, 90, 6);
+        comboTrack.setFill(Color.rgb(40, 45, 60, 0.9));
+        comboTrack.setArcWidth(6);
+        comboTrack.setArcHeight(6);
+        comboFill = new Rectangle(0, 0, 0, 6);
+        comboFill.setFill(Color.rgb(255, 180, 80));
+        comboFill.setArcWidth(6);
+        comboFill.setArcHeight(6);
+        comboText = makeText("", Color.rgb(255, 200, 120));
+        comboTrack.setVisible(false);
+        comboFill.setVisible(false);
+
+        group.getChildren().addAll(background, weatherText, timerText, sniffText, powerUpText, streakText,
+                                   comboTrack, comboFill, comboText);
     }
 
     public Group getGroup() {
@@ -73,6 +93,7 @@ public class HudRenderer {
                        boolean sniffActive,
                        int streakSeconds,
                        double streakMultiplier) {
+        updateComboMeter(player);
 
         while (pigTexts.size() < pigs.size()) {
             Text t = makeText("", TEXT_COLOR);
@@ -182,6 +203,60 @@ public class HudRenderer {
         }
         powerUpText.setX(955.0);
         powerUpText.setY(TEXT_Y);
+    }
+
+    private void updateComboMeter(PlayerPig player) {
+        int count = player.getComboCount();
+        int timer = player.getComboTimer();
+        int tier  = player.getComboTier();
+        if (count == lastComboCount && timer == lastComboTimer && tier == lastComboTier) return;
+
+        boolean visible = count >= 2;
+        comboTrack.setVisible(visible);
+        comboFill.setVisible(visible);
+
+        if (visible) {
+            double trackX = 150.0;
+            double trackY = 34.0;
+            comboTrack.setX(trackX);
+            comboTrack.setY(trackY);
+            double frac = Math.max(0.0, Math.min(1.0,
+                timer / (double) PlayerPig.COMBO_WINDOW_TICKS));
+            comboFill.setX(trackX);
+            comboFill.setY(trackY);
+            comboFill.setWidth(comboTrack.getWidth() * frac);
+            comboFill.setFill(tierColor(tier));
+
+            String label = "Combo " + count + " x" + tierMultLabel(tier);
+            comboText.setText(label);
+            comboText.setFill(tierColor(tier));
+            comboText.setX(trackX);
+            comboText.setY(trackY - 2);
+        } else {
+            comboText.setText("");
+        }
+
+        lastComboCount = count;
+        lastComboTimer = timer;
+        lastComboTier  = tier;
+    }
+
+    private static Color tierColor(int tier) {
+        return switch (tier) {
+            case 0 -> Color.rgb(200, 200, 200);
+            case 1 -> Color.rgb(255, 220, 140);
+            case 2 -> Color.rgb(255, 170, 80);
+            default -> Color.rgb(255, 90, 60);
+        };
+    }
+
+    private static String tierMultLabel(int tier) {
+        return switch (tier) {
+            case 1 -> "1.25";
+            case 2 -> "1.5";
+            case 3 -> "2";
+            default -> "1";
+        };
     }
 
     private static void appendPower(StringBuilder sb, String label, int seconds) {

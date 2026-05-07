@@ -1,6 +1,7 @@
 package com.example.demo.render;
 
 import com.example.demo.core.GameSession;
+import com.example.demo.core.MetaProgression;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
@@ -16,6 +17,7 @@ public class MainMenuOverlay {
 
     private final Group group = new Group();
     private final Text highScoreText;
+    private final Text endlessBadge;
     private Runnable onStart;
 
     private final int width;
@@ -50,6 +52,13 @@ public class MainMenuOverlay {
         highScoreText.setFill(Color.rgb(255, 240, 100));
         centerText(highScoreText, height * 0.40);
         group.getChildren().add(highScoreText);
+
+        // Endless badge (only visible when the player has reached endless levels)
+        endlessBadge = new Text("");
+        endlessBadge.setFont(Font.font("System", FontWeight.BOLD, 16));
+        endlessBadge.setFill(Color.rgb(255, 140, 80));
+        endlessBadge.setVisible(false);
+        group.getChildren().add(endlessBadge);
 
         // Controls
         String[] controls = {
@@ -106,7 +115,17 @@ public class MainMenuOverlay {
     public void show() {
         highScoreText.setText("High Score: " + GameSession.getHighScore());
         centerText(highScoreText, height * 0.40);
+        endlessBadge.setVisible(false);
         group.setVisible(true);
+    }
+
+    public void show(MetaProgression meta) {
+        show();
+        if (meta != null && meta.getEndlessBest() > 0) {
+            endlessBadge.setText("Endless Ante reached: L" + (10 + meta.getEndlessBest()));
+            centerText(endlessBadge, height * 0.45);
+            endlessBadge.setVisible(true);
+        }
     }
 
     public void hide() {

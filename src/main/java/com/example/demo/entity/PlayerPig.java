@@ -34,6 +34,13 @@ public class PlayerPig extends Pig {
     private boolean sniffActive;
     private long sniffEndTime;
     private long sniffCooldownEnd;
+    private double sniffCooldownMult = 1.0;
+
+    /**
+     * Allows boons / combos (e.g. Wind-Walker) to scale the sniff cooldown.
+     * 0.5 = half cooldown.
+     */
+    public void setSniffCooldownMultiplier(double m) { this.sniffCooldownMult = Math.max(0.1, m); }
 
     // --- Power-ups ---
     private int speedBoostTicks;
@@ -43,6 +50,11 @@ public class PlayerPig extends Pig {
     private int superPigTicks;
     private boolean stunned;
     private int stunTicks;
+
+    // --- Combo meter ---
+    public static final int COMBO_WINDOW_TICKS = 90;
+    private int comboCount;
+    private int comboTimer;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -122,7 +134,7 @@ public class PlayerPig extends Pig {
 
         sniffActive = true;
         sniffEndTime = now + SNIFF_DURATION_NS;
-        sniffCooldownEnd = now + SNIFF_COOLDOWN_NS;
+        sniffCooldownEnd = now + (long) (SNIFF_COOLDOWN_NS * sniffCooldownMult);
         return true;
     }
 
@@ -178,6 +190,49 @@ public class PlayerPig extends Pig {
     public int getShieldTicks() { return hasShield ? 1 : 0; }
     public int getMagnetTicks() { return magnetTicks; }
     public int getSuperPigTicks() { return superPigTicks; }
+
+    // --- Combo meter ---
+
+    /** Increment the combo counter on each item pickup; resets the expiry timer. */
+    public void addComboHit() {
+        comboCount++;
+        comboTimer = COMBO_WINDOW_TICKS;
+    }
+
+    /** Decrement the combo expiry; reset the chain if it expires. */
+    public void tickCombo() {
+        if (comboTimer > 0) {
+            comboTimer--;
+            if (comboTimer == 0) comboCount = 0;
+        }
+    }
+
+    /** Force-reset the combo (called on hit or starvation). */
+    public void breakCombo() {
+        comboCount = 0;
+        comboTimer = 0;
+    }
+
+    public int getComboCount() { return comboCount; }
+    public int getComboTimer() { return comboTimer; }
+
+    /** 0 = no bonus, 1 = ×1.25, 2 = ×1.5, 3 = ×2.0. */
+    public int getComboTier() {
+        if (comboCount >= 8) return 3;
+        if (comboCount >= 5) return 2;
+        if (comboCount >= 3) return 1;
+        return 0;
+    }
+
+    /** Score multiplier for the current combo tier. */
+    public double getComboMultiplier() {
+        return switch (getComboTier()) {
+            case 1 -> 1.25;
+            case 2 -> 1.5;
+            case 3 -> 2.0;
+            default -> 1.0;
+        };
+    }
 
     // -------------------------------------------------------------------------
     // Getters

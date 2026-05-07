@@ -27,6 +27,23 @@ public class MetaProgression {
     private int bestDailyScore;
     private final Map<Perk, Integer> perkLevels = new EnumMap<>(Perk.class);
     private final Set<Achievement> achievements = EnumSet.noneOf(Achievement.class);
+    private final Set<BoonCombo> discoveredCombos = EnumSet.noneOf(BoonCombo.class);
+
+    // Settings (B1)
+    private double masterVolume = 1.0;
+    private boolean shakeEnabled = true;
+    private boolean hitStopEnabled = true;
+
+    // Endless mode (S3)
+    private boolean clearedTen;
+    private int endlessBest;
+
+    // Narrative (N3)
+    private String pigName = "Truffles";
+
+    // Heat ladder (S1)
+    private int lastHeatPicked;
+    private int bestHeatBeaten;
 
     public MetaProgression() {
         for (Perk p : Perk.values()) perkLevels.put(p, 0);
@@ -40,9 +57,49 @@ public class MetaProgression {
     public Set<Achievement> getAchievements() { return achievements; }
     public boolean hasAchievement(Achievement a) { return achievements.contains(a); }
 
+    public double getMasterVolume() { return masterVolume; }
+    public void setMasterVolume(double v) { this.masterVolume = Math.max(0.0, Math.min(1.0, v)); }
+    public boolean isShakeEnabled() { return shakeEnabled; }
+    public void setShakeEnabled(boolean v) { this.shakeEnabled = v; }
+    public boolean isHitStopEnabled() { return hitStopEnabled; }
+    public void setHitStopEnabled(boolean v) { this.hitStopEnabled = v; }
+
+    public boolean hasClearedTen() { return clearedTen; }
+    public void setClearedTen(boolean v) { this.clearedTen = v; }
+    public int getEndlessBest() { return endlessBest; }
+    /** Records the deepest endless level reached if it improves on the prior best. */
+    public void recordEndlessDepth(int depth) {
+        if (depth > endlessBest) endlessBest = depth;
+    }
+
     /** Records a new achievement. Returns true if this was a fresh unlock. */
     public boolean unlockAchievement(Achievement a) {
         return achievements.add(a);
+    }
+
+    public Set<BoonCombo> getDiscoveredCombos() { return discoveredCombos; }
+    /** Records a freshly observed combo. Returns true if it was a first-time discovery. */
+    public boolean discoverCombo(BoonCombo c) {
+        return discoveredCombos.add(c);
+    }
+    public boolean hasDiscoveredAllCombos() {
+        return discoveredCombos.size() == BoonCombo.values().length;
+    }
+
+    public String getPigName() { return pigName; }
+    public void setPigName(String name) {
+        if (name == null) return;
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) return;
+        // Cap length to keep UI clean.
+        this.pigName = trimmed.length() > 20 ? trimmed.substring(0, 20) : trimmed;
+    }
+
+    public int getLastHeatPicked() { return lastHeatPicked; }
+    public void setLastHeatPicked(int v) { this.lastHeatPicked = Math.max(0, v); }
+    public int getBestHeatBeaten() { return bestHeatBeaten; }
+    public void recordHeatBeaten(int v) {
+        if (v > bestHeatBeaten) bestHeatBeaten = v;
     }
 
     /** Adds banked truffles (called when a run ends). */
@@ -111,6 +168,22 @@ public class MetaProgression {
                     catch (IllegalArgumentException ignore) {}
                 }
             }
+            m.masterVolume   = parseDouble(kv.get("masterVolume"), 1.0);
+            m.shakeEnabled   = parseBoolean(kv.get("shakeEnabled"), true);
+            m.hitStopEnabled = parseBoolean(kv.get("hitStopEnabled"), true);
+            m.clearedTen     = parseBoolean(kv.get("clearedTen"), false);
+            m.endlessBest    = parseInt(kv.get("endlessBest"), 0);
+            String comboStr  = kv.get("discoveredCombos");
+            if (comboStr != null && !comboStr.isEmpty()) {
+                for (String name : comboStr.split(",")) {
+                    try { m.discoveredCombos.add(BoonCombo.valueOf(name.trim())); }
+                    catch (IllegalArgumentException ignore) {}
+                }
+            }
+            String savedName = kv.get("pigName");
+            if (savedName != null && !savedName.isEmpty()) m.setPigName(savedName);
+            m.lastHeatPicked  = parseInt(kv.get("lastHeatPicked"), 0);
+            m.bestHeatBeaten  = parseInt(kv.get("bestHeatBeaten"), 0);
         } catch (IOException ex) {
             // Corrupt file — ignore and start fresh.
         }
@@ -139,6 +212,24 @@ public class MetaProgression {
                 }
                 bw.write("achievements=" + achList);
                 bw.newLine();
+                bw.write("masterVolume=" + masterVolume); bw.newLine();
+                bw.write("shakeEnabled=" + shakeEnabled); bw.newLine();
+                bw.write("hitStopEnabled=" + hitStopEnabled); bw.newLine();
+                bw.write("clearedTen=" + clearedTen); bw.newLine();
+                bw.write("endlessBest=" + endlessBest); bw.newLine();
+                StringBuilder comboList = new StringBuilder();
+                boolean firstC = true;
+                for (BoonCombo c : discoveredCombos) {
+                    if (!firstC) comboList.append(',');
+                    comboList.append(c.name());
+                    firstC = false;
+                }
+                bw.write("discoveredCombos=" + comboList);
+                bw.newLine();
+                bw.write("pigName=" + pigName);
+                bw.newLine();
+                bw.write("lastHeatPicked=" + lastHeatPicked); bw.newLine();
+                bw.write("bestHeatBeaten=" + bestHeatBeaten); bw.newLine();
             }
         } catch (IOException ex) {
             // Disk full / permission denied — nothing we can do; progress is lost.
@@ -158,5 +249,15 @@ public class MetaProgression {
     private static long parseLong(String s, long def) {
         if (s == null) return def;
         try { return Long.parseLong(s); } catch (NumberFormatException ex) { return def; }
+    }
+
+    private static double parseDouble(String s, double def) {
+        if (s == null) return def;
+        try { return Double.parseDouble(s); } catch (NumberFormatException ex) { return def; }
+    }
+
+    private static boolean parseBoolean(String s, boolean def) {
+        if (s == null) return def;
+        return Boolean.parseBoolean(s.trim());
     }
 }

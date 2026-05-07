@@ -4,7 +4,10 @@ import com.example.demo.core.Achievement;
 import com.example.demo.core.AchievementTracker;
 import com.example.demo.core.AudioManager;
 import com.example.demo.core.Boon;
+import com.example.demo.core.BoonCombo;
 import com.example.demo.core.EventBus;
+import com.example.demo.core.Flavor;
+import com.example.demo.core.HeatModifier;
 import com.example.demo.core.GameEvent;
 import com.example.demo.core.GameSession;
 import com.example.demo.core.LevelType;
@@ -35,6 +38,7 @@ import com.example.demo.render.HudRenderer;
 import com.example.demo.render.ItemRenderer;
 import com.example.demo.render.MainMenuOverlay;
 import com.example.demo.render.ObstacleRenderer;
+import com.example.demo.render.PauseOverlay;
 import com.example.demo.render.PigRenderer;
 import com.example.demo.render.RoundEndOverlay;
 import com.example.demo.render.RunSummaryOverlay;
@@ -106,6 +110,7 @@ public class TruffleRushApp extends Application {
         stage.setTitle("TruffleRush");
         stage.setScene(scene);
         stage.setResizable(false);
+        menu.show(meta);
         stage.show();
     }
 
@@ -120,11 +125,14 @@ public class TruffleRushApp extends Application {
 
         shop.setOnStart(() -> {
             session.applyPerks(meta);
+            session.setHeatLevel(shop.getCurrentHeat());
             session.setRunSeed(System.currentTimeMillis());
             startLevel(stage);
         });
         shop.setOnDailyRun(() -> {
             session.applyPerks(meta);
+            // Daily runs ignore Heat to keep the leaderboard apples-to-apples.
+            session.setHeatLevel(0);
             session.setDailyRun(true);
             session.setRunSeed(LocalDate.now().toEpochDay());
             startLevel(stage);
@@ -143,7 +151,12 @@ public class TruffleRushApp extends Application {
             activeTimer.stop();
         }
 
-        final int roundTicks = session.getLevelTimeTicks();
+        // Heat modifier: SHORTER_FUSE shrinks the round timer.
+        int roundTicksRaw = session.getLevelTimeTicks();
+        if (session.isHeatActive(HeatModifier.SHORTER_FUSE)) {
+            roundTicksRaw = (int) (roundTicksRaw * 0.9);
+        }
+        final int roundTicks = roundTicksRaw;
         final double winWeight = session.getWinWeight();
         final long seedBase = session.getRunSeed() == 0 ? System.currentTimeMillis() : session.getRunSeed();
         final long levelSeed = seedBase + session.getLevel() * 1_000_003L;
@@ -154,6 +167,7 @@ public class TruffleRushApp extends Application {
         GameMap map = new GameMap();
         double densityMult = session.getObstacleDensityMultiplier();
         if (levelType == LevelType.GAUNTLET) densityMult *= 1.4;
+        if (session.isHeatActive(HeatModifier.CROWDED_FIELD)) densityMult *= 1.2;
         new MapGenerator(levelSeed, densityMult, biome).generate(map);
 
         // Achievement: reaching this level
@@ -198,14 +212,21 @@ public class TruffleRushApp extends Application {
         if (session.hasBoon(Boon.PACIFIST)) {
             player.setMaxWeightCap(120.0);
         }
+        // Wind-Walker combo: halve sniff cooldown.
+        player.setSniffCooldownMultiplier(
+            session.hasComboActive(BoonCombo.WIND_WALKER) ? 0.5 : 1.0);
 
         // --- Level scaling ---
         double decayRate = session.getWeightDecayRate();
         double swiftMult = session.hasBoon(Boon.SWIFT_HOOVES) ? 1.5 : 1.0;
+        if (session.hasComboActive(BoonCombo.GLASS_CANNON)) swiftMult *= 2.0;
         double swiftSpeed = session.hasBoon(Boon.SWIFT_HOOVES) ? 1.25 : 1.0;
         int aiMoveInterval = session.getAiMoveInterval();
         // Gauntlet: AI is 50% faster (lower move interval)
         if (levelType == LevelType.GAUNTLET) aiMoveInterval = Math.max(4, (int) (aiMoveInterval * 0.66));
+        if (session.isHeatActive(HeatModifier.HUNGRY_PACK)) {
+            aiMoveInterval = Math.max(4, (int) (aiMoveInterval * 0.85));
+        }
         for (Pig pig : allPigs) pig.setWeightDecayRate(decayRate * (pig == player ? swiftMult : 1.0));
         hoggart.setMoveInterval(aiMoveInterval);
         whiskers.setMoveInterval(aiMoveInterval);
@@ -243,6 +264,12 @@ public class TruffleRushApp extends Application {
         BoonOverlay           boonOverlay       = new BoonOverlay(SCENE_W, SCENE_H);
         GameOverOverlay       gameOverOverlay   = new GameOverOverlay(SCENE_W, SCENE_H);
         RunSummaryOverlay     runSummaryOverlay = new RunSummaryOverlay(SCENE_W, SCENE_H);
+        PauseOverlay          pauseOverlay      = new PauseOverlay(SCENE_W, SCENE_H);
+
+        // Apply saved settings to fresh per-level audio/effects state.
+        audio.setMasterVolume(meta.getMasterVolume());
+        effects.setShakeEnabled(meta.isShakeEnabled());
+        effects.setHitStopEnabled(meta.isHitStopEnabled());
 
         obstacleRenderer.render(map);
 
@@ -254,9 +281,15 @@ public class TruffleRushApp extends Application {
 
         // Toast biome + level type at level start
         sidePanel.addEvent(biome.displayName + " biome");
+        sidePanel.addEvent(Flavor.blurbFor(biome));
         if (levelType != LevelType.NORMAL) {
             sidePanel.addEvent(levelType.label() + "!");
             audio.play(AudioManager.Sfx.WOLF_HOWL);
+        }
+        // Endless lore: a beat every 5 endless levels.
+        if (session.isEndless()) {
+            String beat = Flavor.endlessBeat(session.getEndlessDepth());
+            if (!beat.isEmpty()) sidePanel.addEvent(beat);
         }
 
         // --- World group (the part that gets shaken on screen-shake) ---
@@ -296,6 +329,20 @@ public class TruffleRushApp extends Application {
             session.addBoon(b);
             audio.play(AudioManager.Sfx.BOON_PICK);
             achievements.unlock(Achievement.FIRST_BOON);
+            // Detect any combo this pick newly activated.
+            for (BoonCombo combo : BoonCombo.values()) {
+                if (combo.isActive(session.getActiveBoons()) && (combo.a == b || combo.b == b)) {
+                    boolean firstTime = meta.discoverCombo(combo);
+                    sidePanel.addEvent("✦ Combo: " + combo.displayName);
+                    if (firstTime) {
+                        achievements.unlock(Achievement.COMBO_DISCOVERED_FIRST);
+                        if (meta.hasDiscoveredAllCombos()) {
+                            achievements.unlock(Achievement.COMBO_DISCOVERED_ALL);
+                        }
+                        meta.save();
+                    }
+                }
+            }
             heldDirection = Direction.NONE;
             session.nextLevel();
             startLevel(stage);
@@ -319,11 +366,21 @@ public class TruffleRushApp extends Application {
             heldDirection = Direction.NONE;
             depositRunRewards();
             gameOverOverlay.hide();
-            runSummaryOverlay.show(session, meta.getTruffleBank(), pendingBankedThisRun);
+            runSummaryOverlay.show(session, meta.getTruffleBank(), pendingBankedThisRun, meta.getPigName());
         });
         runSummaryOverlay.setOnContinue(() -> {
             heldDirection = Direction.NONE;
             showMainMenu(stage);
+        });
+
+        // --- Bank Run (Truffle King victory): skip the death screen and go straight
+        //     to the run summary, banking rewards as if the run had ended normally. ---
+        roundEndOverlay.setOnBankRun(() -> {
+            heldDirection = Direction.NONE;
+            session.endGame("Crowned Truffle King!");
+            depositRunRewards();
+            roundEndOverlay.hide();
+            runSummaryOverlay.show(session, meta.getTruffleBank(), pendingBankedThisRun, meta.getPigName());
         });
 
         // --- Scene graph (back to front) ---
@@ -335,14 +392,66 @@ public class TruffleRushApp extends Application {
             roundEndOverlay.getGroup(),
             boonOverlay.getGroup(),
             gameOverOverlay.getGroup(),
-            runSummaryOverlay.getGroup()
+            runSummaryOverlay.getGroup(),
+            pauseOverlay.getGroup()
         );
+
+        // --- Per-level state (declared before the input handler so it's in scope) ---
+        final int[]     tick         = {0};
+        final boolean[] roundOver    = {false};
+        final int[]     spawnAccum   = {0};
+        final int decayGrace = session.getDecayGraceTicks();
+
+        // --- Pause flag captured by both the input handler and the loop. ---
+        final boolean[] paused = {false};
+
+        // Pause overlay actions: live-apply tweaks; persist on resume/quit.
+        pauseOverlay.setOnVolumeChanged(v -> {
+            meta.setMasterVolume(v);
+            audio.setMasterVolume(v);
+        });
+        pauseOverlay.setOnShakeToggled(on -> {
+            meta.setShakeEnabled(on);
+            effects.setShakeEnabled(on);
+        });
+        pauseOverlay.setOnHitStopToggled(on -> {
+            meta.setHitStopEnabled(on);
+            effects.setHitStopEnabled(on);
+        });
+        pauseOverlay.setOnResume(() -> {
+            paused[0] = false;
+            pauseOverlay.hide();
+            meta.save();
+            heldDirection = Direction.NONE;
+        });
+        pauseOverlay.setOnQuit(() -> {
+            paused[0] = false;
+            pauseOverlay.hide();
+            meta.save();
+            heldDirection = Direction.NONE;
+            showMainMenu(stage);
+        });
 
         Scene scene = new Scene(root, SCENE_W, SCENE_H, Color.BLACK);
 
         // --- Keyboard input ---
         scene.setOnKeyPressed(e -> {
             KeyCode code = e.getCode();
+            if (code == KeyCode.ESCAPE) {
+                // Pause is only valid during active play (not on round-end / death).
+                if (roundOver[0]) return;
+                if (paused[0]) {
+                    paused[0] = false;
+                    pauseOverlay.hide();
+                    meta.save();
+                } else {
+                    paused[0] = true;
+                    heldDirection = Direction.NONE;
+                    pauseOverlay.show(meta);
+                }
+                return;
+            }
+            if (paused[0]) return;
             switch (code) {
                 case UP    -> heldDirection = Direction.UP;
                 case DOWN  -> heldDirection = Direction.DOWN;
@@ -374,17 +483,12 @@ public class TruffleRushApp extends Application {
 
         gridRenderer.update(0.0);
 
-        // State
-        final int[]     tick         = {0};
-        final boolean[] roundOver    = {false};
-        final int[]     spawnAccum   = {0};
-        final int decayGrace = session.getDecayGraceTicks();
-
         // --- Game loop ---
         activeTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (roundOver[0]) return;
+                if (paused[0]) return;
 
                 // Hit-stop: skip simulation but keep rendering refresh.
                 if (effects.consumeHitStop()) {
@@ -466,15 +570,67 @@ public class TruffleRushApp extends Application {
                             if (type.isHazard) weightDelta *= 0.5;
                             else weightDelta *= 1.5;
                         }
+                        // --- Combo effects (player only) ---
+                        boolean ironBelly = pig == player
+                            && session.hasComboActive(BoonCombo.IRON_BELLY);
+                        if (pig == player) {
+                            if (session.hasComboActive(BoonCombo.BLACK_TRUFFLE_BANQUET)) {
+                                if (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE) {
+                                    weightDelta *= 1.5;
+                                } else if (type == ItemType.ACORN) {
+                                    weightDelta = -3;
+                                }
+                            }
+                            if (session.hasComboActive(BoonCombo.SAINTLY_SNOUT)
+                                    && type == ItemType.COMMON_MUSHROOM) {
+                                weightDelta += 5;
+                            }
+                            if (session.hasComboActive(BoonCombo.GLASS_CANNON) && !type.isHazard) {
+                                weightDelta *= 1.25;
+                            }
+                            if (ironBelly && type.isHazard) {
+                                weightDelta = 0;
+                            }
+                            if (session.hasComboActive(BoonCombo.HOARDER) && !type.isHazard) {
+                                weightDelta += 0.5;
+                            }
+                            if (session.hasComboActive(BoonCombo.TRUFFLE_KING_COMBO)
+                                    && (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE)) {
+                                weightDelta += 1;
+                            }
+                            // Heat: LEAN_PICKINGS reduces non-hazard item value.
+                            if (session.isHeatActive(HeatModifier.LEAN_PICKINGS) && !type.isHazard) {
+                                weightDelta *= 0.85;
+                            }
+                        }
                         pig.addWeight(weightDelta);
-                        if (type == ItemType.MUD_SPLASH) {
+                        // Rival narrative taunt (N1) when an AI pig snags a truffle.
+                        if (pig != player && (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE)) {
+                            String taunt = Flavor.tauntForTruffle(pig.getName());
+                            if (!taunt.isEmpty()) sidePanel.addEvent(taunt);
+                        }
+                        // Any non-shielded hazard breaks the player's combo.
+                        if (pig == player && type.isHazard && !ironBelly) {
+                            player.breakCombo();
+                        }
+                        if (type == ItemType.MUD_SPLASH && !ironBelly) {
                             int slow = session.hasBoon(Boon.GREEDY_HEART) ? 90 : 180;
                             pig.applyMudSlow(slow);
-                            if (pig == player) session.markHitThisLevel();
+                            if (pig == player) {
+                                session.markHitThisLevel();
+                                player.breakCombo();
+                                if (session.hasComboActive(BoonCombo.GHOST_PIG)) {
+                                    player.activateSpeedBoost(240);
+                                }
+                            }
                         }
                         // Power-up effects (player only) and feedback
                         if (pig == player) {
-                            awardItemScore(type);
+                            // Bump combo BEFORE scoring so this pickup itself rides the new tier.
+                            int prevTier = player.getComboTier();
+                            player.addComboHit();
+                            int newTier = player.getComboTier();
+                            awardItemScore(type, player.getComboMultiplier());
                             session.incItemsCollected();
                             switch (type) {
                                 case SPEED_MUSHROOM -> { player.activateSpeedBoost(300); sidePanel.addEvent("Speed Boost!"); }
@@ -489,15 +645,20 @@ public class TruffleRushApp extends Application {
                             if (type == ItemType.BLACK_TRUFFLE || type == ItemType.WHITE_TRUFFLE) {
                                 achievements.unlock(Achievement.FIRST_TRUFFLE);
                             }
-                            // Game-feel: particle burst + audio on collection
-                            Color burstColor = particleColor(type);
+                            // Game-feel: particle burst + audio on collection. Higher combo
+                            // tiers spawn more particles in a brighter colour.
+                            Color burstColor = comboTierColor(particleColor(type), newTier);
                             int burstSize = (type.weightDelta >= 8) ? 14 : 8;
+                            burstSize += newTier * 4;
                             effects.spawnBurst(item.getCol(), item.getRow(), burstColor, burstSize);
                             if (type.weightDelta >= 8) {
                                 effects.shake(6, 2.0);
                                 audio.play(AudioManager.Sfx.BIG_COLLECT);
                             } else {
                                 audio.play(AudioManager.Sfx.COLLECT);
+                            }
+                            if (newTier > prevTier && newTier > 0) {
+                                sidePanel.addEvent("Combo x" + tierMultiplierLabel(newTier) + "!");
                             }
                         }
                         itemSpawner.collectItem(item);
@@ -559,6 +720,7 @@ public class TruffleRushApp extends Application {
                 if (wolf != null && !wolf.isActive()) {
                     if (wolf.hasCaughtPlayer()) {
                         roundOver[0] = true;
+                        player.breakCombo();
                         effects.shake(30, 8.0);
                         audio.play(AudioManager.Sfx.HIT);
                         session.endGame("Eaten by a wolf!");
@@ -584,6 +746,9 @@ public class TruffleRushApp extends Application {
                         effects.shake(8, 3.0);
                         audio.play(AudioManager.Sfx.SHIELD_BLOCK);
                         if (player.getWeight() < 20) achievements.unlock(Achievement.SURVIVE_WOLF);
+                        if (session.hasComboActive(BoonCombo.GHOST_PIG)) {
+                            player.activateSpeedBoost(240);
+                        }
                     }
                     eventMgr.clearWolf();
                     wolfHolder[0] = null;
@@ -594,6 +759,7 @@ public class TruffleRushApp extends Application {
                 if (farmer != null && !farmer.isActive()) {
                     if (farmer.hasCaughtPlayer()) {
                         roundOver[0] = true;
+                        player.breakCombo();
                         effects.shake(30, 8.0);
                         audio.play(AudioManager.Sfx.HIT);
                         session.endGame("Caught by the farmer!");
@@ -613,6 +779,9 @@ public class TruffleRushApp extends Application {
                         session.markHitThisLevel();
                         sidePanel.addEvent("Shield blocked farmer!");
                         audio.play(AudioManager.Sfx.SHIELD_BLOCK);
+                        if (session.hasComboActive(BoonCombo.GHOST_PIG)) {
+                            player.activateSpeedBoost(240);
+                        }
                     }
                     eventMgr.clearFarmer();
                 }
@@ -628,10 +797,16 @@ public class TruffleRushApp extends Application {
 
                 // --- Player power-up ticks ---
                 player.tickPowerUps();
+                int comboBeforeExpiry = player.getComboCount();
+                player.tickCombo();
+                if (comboBeforeExpiry >= 3 && player.getComboCount() == 0) {
+                    sidePanel.addEvent("Combo lost");
+                }
 
                 // --- Magnet pull (every 60 ticks) — range from perks/boons ---
                 int magnetRange = session.getMagnetRange();
                 if (session.hasBoon(Boon.SHARP_NOSE)) magnetRange = Math.max(1, magnetRange - 1);
+                if (session.hasComboActive(BoonCombo.HOARDER)) magnetRange += 1;
                 if (player.hasMagnet() && t % 60 == 0) {
                     int range = magnetRange;
                     for (Item item : itemSpawner.getItems()) {
@@ -705,6 +880,7 @@ public class TruffleRushApp extends Application {
                 // --- Starvation check ---
                 if (player.getWeight() <= 10.0) {
                     roundOver[0] = true;
+                    player.breakCombo();
                     audio.play(AudioManager.Sfx.HIT);
                     session.endGame("Starved out!");
                     gameOverOverlay.show(session.getDeathReason(),
@@ -745,6 +921,18 @@ public class TruffleRushApp extends Application {
                         }
                         session.updateHighScore();
                         audio.play(AudioManager.Sfx.LEVEL_UP);
+                        // S3: first level-10 clear shows the Truffle King victory overlay.
+                        boolean firstTenClear = session.getLevel() == 10 && !session.isEndless();
+                        if (firstTenClear) {
+                            session.setEndless(true);
+                            meta.setClearedTen(true);
+                            meta.recordHeatBeaten(session.getHeatLevel());
+                            achievements.unlock(Achievement.TRUFFLE_KING);
+                            meta.save();
+                            roundEndOverlay.setVictoryMode(true);
+                        } else {
+                            roundEndOverlay.setVictoryMode(false);
+                        }
                         roundEndOverlay.show(ranked);
                     }
                     stop();
@@ -805,36 +993,48 @@ public class TruffleRushApp extends Application {
     /** Apply per-run perk effects to the player at level start. */
     private void applyPlayerStartingPerks(PlayerPig player) {
         double bonus = session.getStartWeightBonus();
-        if (bonus > 0) player.setWeight(50.0 + bonus);
-        if (session.startsWithShield()) player.activateShield();
-        // SHARP_NOSE boon: halved sniff cooldown is read on-demand from boons,
-        // but the cooldown is private to PlayerPig — we'd need a setter. Keeping
-        // this compact: SHARP_NOSE only affects magnet range here. Future work.
+        double startWeight = 50.0 + bonus;
+        // Heat: NO_SAFETY_NET shaves 5 kg off the start.
+        if (session.isHeatActive(HeatModifier.NO_SAFETY_NET)) startWeight -= 5.0;
+        if (bonus > 0 || session.isHeatActive(HeatModifier.NO_SAFETY_NET)) {
+            player.setWeight(Math.max(11.0, startWeight));
+        }
+        // Heat: DRAINED_BANK disables the start-of-level shield from the perk.
+        if (session.startsWithShield() && !session.isHeatActive(HeatModifier.DRAINED_BANK)) {
+            player.activateShield();
+        }
     }
 
-    /** Applies item-pickup score, factoring in Truffle Hunter boon (which zeroes some). */
-    private void awardItemScore(ItemType type) {
+    /**
+     * Applies item-pickup score, factoring in Truffle Hunter boon (which zeroes some)
+     * and the per-pickup combo multiplier from {@link PlayerPig#getComboMultiplier()}.
+     */
+    private void awardItemScore(ItemType type, double comboMult) {
         boolean truffleHunter = session.hasBoon(Boon.TRUFFLE_HUNTER);
         switch (type) {
             case ACORN -> {
-                if (!truffleHunter) session.addScoreWithStreak(ScoreEvent.ACORN_COLLECTED.points);
+                if (!truffleHunter) session.addScoreWithStreak(scaled(ScoreEvent.ACORN_COLLECTED.points, comboMult));
             }
             case COMMON_MUSHROOM -> {
-                if (!truffleHunter) session.addScoreWithStreak(ScoreEvent.MUSHROOM_COLLECTED.points);
+                if (!truffleHunter) session.addScoreWithStreak(scaled(ScoreEvent.MUSHROOM_COLLECTED.points, comboMult));
             }
             case BLACK_TRUFFLE -> {
                 int pts = ScoreEvent.BLACK_TRUFFLE_COLLECTED.points;
                 if (truffleHunter) pts *= 2;
-                session.addScoreWithStreak(pts);
+                session.addScoreWithStreak(scaled(pts, comboMult));
             }
             case WHITE_TRUFFLE -> {
                 int pts = ScoreEvent.WHITE_TRUFFLE_COLLECTED.points;
                 if (truffleHunter) pts *= 2;
-                session.addScoreWithStreak(pts);
+                session.addScoreWithStreak(scaled(pts, comboMult));
             }
             default -> {}
         }
         session.noteItemCollected();
+    }
+
+    private static int scaled(int basePoints, double mult) {
+        return (int) Math.round(basePoints * mult);
     }
 
     /** Returns the boons not yet picked this run. */
@@ -863,6 +1063,24 @@ public class TruffleRushApp extends Application {
         return result;
     }
 
+    private static String tierMultiplierLabel(int tier) {
+        return switch (tier) {
+            case 1 -> "1.25";
+            case 2 -> "1.5";
+            case 3 -> "2";
+            default -> "1";
+        };
+    }
+
+    /** Tints the base particle colour brighter as the combo tier increases. */
+    private static Color comboTierColor(Color base, int tier) {
+        if (tier <= 0) return base;
+        // Mix toward warm white at higher tiers.
+        double mix = Math.min(1.0, 0.20 * tier);
+        Color hot = Color.rgb(255, 220, 120);
+        return base.interpolate(hot, mix);
+    }
+
     /** Particle color for a given item type (rough match to the rendered shape). */
     private static Color particleColor(ItemType type) {
         return switch (type) {
@@ -887,12 +1105,15 @@ public class TruffleRushApp extends Application {
     /** Convert run score into banked truffles and persist. */
     private void depositRunRewards() {
         int score = session.getScore();
-        int banked = Math.max(1, score / 100);
+        int banked = (int) Math.round(Math.max(1, score / 100) * session.getHeatRewardMultiplier());
         meta.addToBank(banked);
         pendingBankedThisRun = banked;
         if (session.isDailyRun()) {
             meta.recordDailyScore(LocalDate.now().toEpochDay(), score);
             achievements.unlock(Achievement.DAILY_RUN);
+        }
+        if (session.isEndless()) {
+            meta.recordEndlessDepth(session.getEndlessDepth());
         }
         achievements.checkLifetimeTruffles();
         achievements.checkPerkMaxed();

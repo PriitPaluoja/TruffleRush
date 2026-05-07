@@ -69,10 +69,20 @@ public class RunSummaryOverlay {
     public void setOnContinue(Runnable r) { this.onContinue = r; }
 
     public void show(GameSession session, int truffleBank, int truffleDeposit) {
+        show(session, truffleBank, truffleDeposit, null);
+    }
+
+    public void show(GameSession session, int truffleBank, int truffleDeposit, String pigName) {
         for (Text t : dynamicLines) group.getChildren().remove(t);
         dynamicLines.clear();
 
+        if (pigName != null && !pigName.isEmpty()) {
+            titleText.setText(pigName + "'s Run");
+            centerText(titleText, height * 0.18);
+        }
+
         List<String> lines = new ArrayList<>();
+        if (session.isEndless()) lines.add("Endless Depth: " + session.getEndlessDepth());
         lines.add("Reached:  Level " + session.getLevel());
         lines.add("Score:    " + session.getScore());
         lines.add("Items:    " + session.getItemsCollected() + "  truffles+");

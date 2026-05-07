@@ -4,6 +4,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.sound.sampled.DataLine;
+import javax.sound.sampled.FloatControl;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -29,6 +30,7 @@ public class AudioManager {
     private static final float SAMPLE_RATE = 44_100f;
     private final Map<Sfx, byte[]> samples = new EnumMap<>(Sfx.class);
     private boolean enabled = true;
+    private volatile double masterVolume = 1.0;
 
     public AudioManager() {
         try {
@@ -48,28 +50,43 @@ public class AudioManager {
 
     public void play(Sfx sfx) {
         if (!enabled) return;
+        if (masterVolume <= 0.0) return;
         byte[] data = samples.get(sfx);
         if (data == null) return;
-        // Play asynchronously so the game loop never blocks on audio.
-        Thread t = new Thread(() -> playRaw(data));
+        // Snapshot current volume so a slider tweak mid-playback can't desync.
+        double vol = masterVolume;
+        Thread t = new Thread(() -> playRaw(data, vol));
         t.setDaemon(true);
         t.start();
     }
 
-    private void playRaw(byte[] data) {
+    private void playRaw(byte[] data, double volume) {
         try {
             AudioFormat fmt = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
             DataLine.Info info = new DataLine.Info(Clip.class, fmt);
             try (Clip clip = (Clip) AudioSystem.getLine(info)) {
                 clip.open(fmt, data, 0, data.length);
+                applyVolume(clip, volume);
                 clip.start();
-                // Wait for clip to finish so try-with-resources can close it.
                 while (clip.isRunning()) {
                     Thread.sleep(5);
                 }
             }
         } catch (Throwable t) {
             // Silently ignore — audio is non-essential.
+        }
+    }
+
+    private static void applyVolume(Clip clip, double volume) {
+        if (volume >= 1.0) return;
+        try {
+            // Linear 0..1 → dB attenuation.
+            FloatControl gain = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+            float db = (volume <= 0.0001) ? gain.getMinimum() : (float) (20.0 * Math.log10(volume));
+            db = Math.max(gain.getMinimum(), Math.min(gain.getMaximum(), db));
+            gain.setValue(db);
+        } catch (IllegalArgumentException ignored) {
+            // Some lines don't expose MASTER_GAIN — fall back to full volume.
         }
     }
 
@@ -122,4 +139,9 @@ public class AudioManager {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
+
+    public double getMasterVolume() { return masterVolume; }
+    public void setMasterVolume(double v) {
+        this.masterVolume = Math.max(0.0, Math.min(1.0, v));
+    }
 }

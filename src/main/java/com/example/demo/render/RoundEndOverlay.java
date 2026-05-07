@@ -67,8 +67,16 @@ public class RoundEndOverlay {
     /** "Play Again" button label. */
     private final Text playAgainText;
 
+    /** Optional "Bank Run" button (shown only in victory mode). */
+    private final Rectangle bankRunBg;
+    private final Text bankRunText;
+
     /** Callback invoked when the player clicks "Play Again". */
     private Runnable onPlayAgain;
+    /** Callback for the victory-mode "Bank Run" button. */
+    private Runnable onBankRun;
+
+    private boolean victoryMode;
 
     private final int mapWidth;
     private final int mapHeight;
@@ -120,7 +128,29 @@ public class RoundEndOverlay {
         playAgainBg.setOnMouseClicked(e -> { if (onPlayAgain != null) onPlayAgain.run(); });
         playAgainText.setOnMouseClicked(e -> { if (onPlayAgain != null) onPlayAgain.run(); });
 
-        group.getChildren().addAll(backdrop, titleText, playAgainBg, playAgainText);
+        // Bank Run button (victory mode only).
+        bankRunBg = new Rectangle(
+            (mapWidth - btnW) / 2.0, mapHeight - 80 + btnH + 12, btnW, btnH);
+        bankRunBg.setFill(Color.rgb(140, 100, 60));
+        bankRunBg.setStroke(Color.rgb(100, 70, 30));
+        bankRunBg.setStrokeWidth(2);
+        bankRunBg.setArcWidth(12);
+        bankRunBg.setArcHeight(12);
+        bankRunText = new Text("Bank Run");
+        bankRunText.setFont(Font.font("System", FontWeight.BOLD, 18));
+        bankRunText.setFill(Color.WHITE);
+        double bankLabelW = bankRunText.getText().length() * 18 * 0.55;
+        bankRunText.setX((mapWidth - bankLabelW) / 2.0);
+        bankRunText.setY(bankRunBg.getY() + 28);
+        bankRunBg.setOnMouseEntered(e -> bankRunBg.setFill(Color.rgb(170, 130, 80)));
+        bankRunBg.setOnMouseExited(e -> bankRunBg.setFill(Color.rgb(140, 100, 60)));
+        bankRunBg.setOnMouseClicked(e -> { if (onBankRun != null) onBankRun.run(); });
+        bankRunText.setOnMouseClicked(e -> { if (onBankRun != null) onBankRun.run(); });
+        bankRunBg.setVisible(false);
+        bankRunText.setVisible(false);
+
+        group.getChildren().addAll(backdrop, titleText, playAgainBg, playAgainText,
+                                   bankRunBg, bankRunText);
         group.setVisible(false);
     }
 
@@ -136,6 +166,25 @@ public class RoundEndOverlay {
     public Group getGroup() {
         return group;
     }
+
+    /** Toggles the level-10 victory presentation. Call before {@link #show}. */
+    public void setVictoryMode(boolean victory) {
+        this.victoryMode = victory;
+        if (victory) {
+            titleText.setText("TRUFFLE KING!");
+            playAgainText.setText("Continue (Endless)");
+        } else {
+            titleText.setText("LEVEL COMPLETE!");
+            playAgainText.setText("Next Level");
+        }
+        // Re-centre the (possibly resized) Next Level / Continue label.
+        double labelW = playAgainText.getText().length() * 20 * 0.55;
+        playAgainText.setX((mapWidth - labelW) / 2.0);
+        bankRunBg.setVisible(victory);
+        bankRunText.setVisible(victory);
+    }
+
+    public void setOnBankRun(Runnable r) { this.onBankRun = r; }
 
     /**
      * Makes the overlay visible and populates the rankings.
