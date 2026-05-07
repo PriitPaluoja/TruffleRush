@@ -272,7 +272,7 @@ public class TruffleRushApp extends Application {
         effects.setShakeEnabled(meta.isShakeEnabled());
         effects.setHitStopEnabled(meta.isHitStopEnabled());
 
-        obstacleRenderer.render(map);
+        obstacleRenderer.render(map, biome);
 
         // Achievements: route the toast through the side panel and play a chime.
         achievements.setOnUnlock(a -> {
@@ -964,7 +964,7 @@ public class TruffleRushApp extends Application {
                 Item saRender = superAcornMgr.getSuperAcorn();
                 if (saRender != null && !saRender.isCollected()) renderItems.add(saRender);
                 itemRenderer.update(renderItems, map, allPigs,
-                    player.isSniffActive(), player.getCol(), player.getRow());
+                    player.isSniffActive(), player.getCol(), player.getRow(), t);
 
                 // --- Sniff render ---
                 sniffRenderer.update(player.isSniffActive(), player.getCol(), player.getRow());

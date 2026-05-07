@@ -1,5 +1,7 @@
 package com.example.demo.world;
 
+import javafx.scene.paint.Color;
+
 /**
  * Visual + obstacle theme for a level. Picked from the level number, every 3
  * levels: levels 1–3 = FOREST, 4–6 = SWAMP, 7–9 = FARM, then loops.
@@ -29,4 +31,34 @@ public enum Biome {
     public double bushMultiplier()  { return this == FOREST ? 1.6 : (this == FARM ? 0.5 : 0.8); }
     public double mudMultiplier()   { return this == SWAMP  ? 2.5 : (this == FARM ? 0.5 : 1.0); }
     public double fenceMultiplier() { return this == FARM   ? 2.5 : (this == SWAMP ? 0.5 : 1.0); }
+
+    /** Berry color sprinkled inside bushes — red in forest, blue in swamp, pale yellow on farms. */
+    public Color bushAccent() {
+        switch (this) {
+            case SWAMP: return Color.rgb(40, 60, 130);
+            case FARM:  return Color.rgb(230, 215, 110);
+            case FOREST:
+            default:    return Color.rgb(200, 40, 40);
+        }
+    }
+
+    /** Light "facet" highlight color used on top-lit rocks. */
+    public Color rockHighlight() {
+        switch (this) {
+            case SWAMP: return Color.rgb(150, 155, 145);
+            case FARM:  return Color.rgb(190, 175, 150);
+            case FOREST:
+            default:    return Color.rgb(180, 180, 185);
+        }
+    }
+
+    /** Small bubble color floating in mud pits. */
+    public Color mudAccent() {
+        switch (this) {
+            case SWAMP: return Color.rgb(70, 55, 30, 0.85);
+            case FARM:  return Color.rgb(140, 110, 70, 0.85);
+            case FOREST:
+            default:    return Color.rgb(80, 50, 25, 0.85);
+        }
+    }
 }

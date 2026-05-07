@@ -9,7 +9,9 @@ import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Ellipse;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
+import javafx.scene.shape.Polyline;
 import javafx.scene.shape.Rectangle;
 
 import java.util.List;
@@ -21,14 +23,8 @@ import java.util.List;
  * inside a {@value GameMap#TILE_SIZE}-pixel tile.  Item shapes are roughly
  * 12–18 px in their largest dimension and are centred within their tile.
  *
- * <p>Usage:
- * <pre>
- *   ItemRenderer renderer = new ItemRenderer();
- *   sceneRoot.getChildren().add(renderer.getGroup());
- *
- *   // In the game loop:
- *   renderer.update(spawner.getItems());
- * </pre>
+ * <p>Flagship items (golden truffle, super acorn, magnet crown, greater speed)
+ * bob gently using the {@code animTick} parameter passed to {@link #update}.
  */
 public class ItemRenderer {
 
@@ -36,7 +32,6 @@ public class ItemRenderer {
 
     private final Group group = new Group();
 
-    /** Returns the parent group that should be added to the scene graph. */
     public Group getGroup() {
         return group;
     }
@@ -47,16 +42,10 @@ public class ItemRenderer {
      * <p>Items on BUSH cells are hidden unless at least one pig is adjacent
      * (Manhattan distance &lt;= 1), OR the player's sniff is active and the item
      * is within 2 cells of the player.
-     *
-     * @param items       the full item list from {@code ItemSpawner.getItems()}
-     * @param map         the game map used to check cell obstacles
-     * @param pigs        all pigs whose proximity reveals bush-hidden items
-     * @param sniffActive whether the player's sniff ability is currently active
-     * @param sniffCol    player column (used for sniff reveal radius)
-     * @param sniffRow    player row (used for sniff reveal radius)
      */
     public void update(List<Item> items, GameMap map, List<Pig> pigs,
-                       boolean sniffActive, int sniffCol, int sniffRow) {
+                       boolean sniffActive, int sniffCol, int sniffRow,
+                       long animTick) {
         group.getChildren().clear();
         for (Item item : items) {
             if (item.isCollected()) continue;
@@ -64,16 +53,13 @@ public class ItemRenderer {
             int itemCol = item.getCol();
             int itemRow = item.getRow();
 
-            // Check whether this item sits on a BUSH cell
             Obstacle obs = map.getCell(itemCol, itemRow).getObstacle();
             if (obs == Obstacle.BUSH) {
-                // Reveal if any pig is adjacent (distance <= 1)
                 boolean revealed = false;
                 for (Pig pig : pigs) {
                     int dist = Math.abs(pig.getCol() - itemCol) + Math.abs(pig.getRow() - itemRow);
                     if (dist <= 1) { revealed = true; break; }
                 }
-                // Also reveal if player sniff is active and item is within 2 cells
                 if (!revealed && sniffActive) {
                     int sniffDist = Math.abs(sniffCol - itemCol) + Math.abs(sniffRow - itemRow);
                     if (sniffDist <= 2) revealed = true;
@@ -82,23 +68,30 @@ public class ItemRenderer {
             }
 
             Group shape = buildShape(item.getType());
-            // Translate so the shape centre lands at the tile centre
             double cx = itemCol * TILE + TILE / 2.0;
             double cy = itemRow * TILE + TILE / 2.0;
+
+            if (isFlagship(item.getType())) {
+                cy += Math.sin(animTick * 0.08 + (itemCol + itemRow) * 0.7) * 1.5;
+            }
+
             shape.setTranslateX(cx);
             shape.setTranslateY(cy);
             group.getChildren().add(shape);
         }
     }
 
+    private static boolean isFlagship(ItemType type) {
+        return type == ItemType.GOLDEN_TRUFFLE
+            || type == ItemType.SUPER_ACORN
+            || type == ItemType.MAGNET_CROWN
+            || type == ItemType.GREATER_SPEED;
+    }
+
     // -------------------------------------------------------------------------
     // Shape builders — one per ItemType
     // -------------------------------------------------------------------------
 
-    /**
-     * Builds and returns the JavaFX shape group for the given item type.
-     * All shapes are centred at (0, 0); the caller applies the translation.
-     */
     private static Group buildShape(ItemType type) {
         switch (type) {
             case BLACK_TRUFFLE:   return buildBlackTruffle();
@@ -123,63 +116,93 @@ public class ItemRenderer {
     }
 
     // ------------------------------------------------------------------
-    // BLACK_TRUFFLE — 6-sided polygon, dark brown
+    // BLACK_TRUFFLE — 6-sided polygon with pock-marks + highlight
     // ------------------------------------------------------------------
     private static Group buildBlackTruffle() {
         Polygon hex = regularHexagon(9, Color.rgb(80, 50, 20));
         hex.setStroke(Color.rgb(50, 30, 10));
         hex.setStrokeWidth(1.0);
-        return new Group(hex);
+
+        Ellipse highlight = new Ellipse(-3, -3, 2.5, 1.5);
+        highlight.setFill(Color.rgb(255, 255, 255, 0.18));
+
+        Color pock = Color.rgb(40, 25, 5);
+        Circle p1 = new Circle(-2, 1, 1.0, pock);
+        Circle p2 = new Circle(3, -2, 1.2, pock);
+        Circle p3 = new Circle(1, 3, 0.8, pock);
+
+        return new Group(hex, highlight, p1, p2, p3);
     }
 
     // ------------------------------------------------------------------
-    // WHITE_TRUFFLE — 6-sided polygon, white/cream
+    // WHITE_TRUFFLE — cream hexagon with darker pock-marks + highlight
     // ------------------------------------------------------------------
     private static Group buildWhiteTruffle() {
         Polygon hex = regularHexagon(9, Color.rgb(240, 235, 210));
         hex.setStroke(Color.rgb(180, 170, 140));
         hex.setStrokeWidth(1.0);
-        return new Group(hex);
+
+        Ellipse highlight = new Ellipse(-3, -3, 3, 1.6);
+        highlight.setFill(Color.rgb(255, 255, 255, 0.5));
+
+        Color pock = Color.rgb(170, 160, 130);
+        Circle p1 = new Circle(-2, 1, 1.0, pock);
+        Circle p2 = new Circle(3, -1, 1.2, pock);
+        Circle p3 = new Circle(0, 3, 0.8, pock);
+
+        return new Group(hex, highlight, p1, p2, p3);
     }
 
     // ------------------------------------------------------------------
-    // COMMON_MUSHROOM — tan circle (cap) + small brown stem rectangle
+    // COMMON_MUSHROOM — tan cap with white spots + gill line
     // ------------------------------------------------------------------
     private static Group buildCommonMushroom() {
-        // Cap
         Circle cap = new Circle(0, -3, 8, Color.rgb(210, 180, 140));
         cap.setStroke(Color.rgb(160, 120, 80));
         cap.setStrokeWidth(1.0);
 
-        // Stem — centred below the cap
         Rectangle stem = new Rectangle(-3, 3, 6, 6);
         stem.setFill(Color.rgb(230, 200, 160));
         stem.setStroke(Color.rgb(160, 120, 80));
         stem.setStrokeWidth(0.8);
 
-        return new Group(stem, cap);
+        Color spot = Color.rgb(250, 240, 220);
+        Circle s1 = new Circle(-3, -5, 1.2, spot);
+        Circle s2 = new Circle(2, -2, 1.4, spot);
+        Circle s3 = new Circle(-1, 0, 1.0, spot);
+
+        Line gill = new Line(-5, 3, 5, 3);
+        gill.setStroke(Color.rgb(160, 120, 80, 0.7));
+        gill.setStrokeWidth(0.6);
+
+        return new Group(stem, cap, s1, s2, s3, gill);
     }
 
     // ------------------------------------------------------------------
-    // ACORN — small brown circle with a tiny dark cap
+    // ACORN — nut + cap + thin stem + body highlight
     // ------------------------------------------------------------------
     private static Group buildAcorn() {
-        // Nut
         Circle nut = new Circle(0, 2, 6, Color.rgb(139, 90, 43));
         nut.setStroke(Color.rgb(100, 60, 20));
         nut.setStrokeWidth(0.8);
 
-        // Cap
         Ellipse cap = new Ellipse(0, -3, 5, 3);
         cap.setFill(Color.rgb(80, 50, 20));
         cap.setStroke(Color.rgb(50, 30, 10));
         cap.setStrokeWidth(0.8);
 
-        return new Group(nut, cap);
+        Line stem = new Line(0, -7, 0, -5);
+        stem.setStroke(Color.rgb(60, 35, 10));
+        stem.setStrokeWidth(1.0);
+
+        Ellipse highlight = new Ellipse(-2, 1, 1.4, 2.4);
+        highlight.setFill(Color.rgb(255, 230, 180, 0.45));
+
+        return new Group(nut, highlight, cap, stem);
     }
 
     // ------------------------------------------------------------------
-    // CELERY — thin tall rectangle, green
+    // CELERY — stalk with fiber lines + extra leaf
     // ------------------------------------------------------------------
     private static Group buildCelery() {
         Rectangle stalk = new Rectangle(-4, -9, 8, 18);
@@ -187,18 +210,25 @@ public class ItemRenderer {
         stalk.setStroke(Color.rgb(30, 120, 30));
         stalk.setStrokeWidth(1.0);
 
-        // Small leaf bump at top
+        Line fiber1 = new Line(-1.5, -7, -1.5, 7);
+        fiber1.setStroke(Color.rgb(30, 120, 30, 0.7));
+        fiber1.setStrokeWidth(0.6);
+        Line fiber2 = new Line(1.5, -7, 1.5, 7);
+        fiber2.setStroke(Color.rgb(30, 120, 30, 0.7));
+        fiber2.setStrokeWidth(0.6);
+
         Ellipse leaf = new Ellipse(0, -10, 5, 3);
         leaf.setFill(Color.rgb(50, 160, 50));
+        Ellipse leaf2 = new Ellipse(-3, -11, 3, 2);
+        leaf2.setFill(Color.rgb(70, 180, 70));
 
-        return new Group(stalk, leaf);
+        return new Group(stalk, fiber1, fiber2, leaf, leaf2);
     }
 
     // ------------------------------------------------------------------
-    // DIET_PILL — small rectangle, white with a red cross
+    // DIET_PILL — already detailed, leave as-is
     // ------------------------------------------------------------------
     private static Group buildDietPill() {
-        // Pill body
         Rectangle body = new Rectangle(-7, -4, 14, 8);
         body.setFill(Color.WHITE);
         body.setStroke(Color.rgb(200, 200, 200));
@@ -206,11 +236,9 @@ public class ItemRenderer {
         body.setArcWidth(6);
         body.setArcHeight(6);
 
-        // Red cross — horizontal bar
         Rectangle crossH = new Rectangle(-4, -1.5, 8, 3);
         crossH.setFill(Color.rgb(220, 30, 30));
 
-        // Red cross — vertical bar
         Rectangle crossV = new Rectangle(-1.5, -4, 3, 8);
         crossV.setFill(Color.rgb(220, 30, 30));
 
@@ -218,7 +246,7 @@ public class ItemRenderer {
     }
 
     // ------------------------------------------------------------------
-    // MUD_SPLASH — semi-transparent muddy brown ellipse
+    // MUD_SPLASH — splat plus extra asymmetric droplet
     // ------------------------------------------------------------------
     private static Group buildMudSplash() {
         Ellipse mud = new Ellipse(0, 0, 11, 7);
@@ -226,25 +254,35 @@ public class ItemRenderer {
         mud.setStroke(Color.rgb(70, 40, 10, 0.8));
         mud.setStrokeWidth(1.0);
 
-        // Two small splat dots
         Circle dot1 = new Circle(-8, -4, 2.5, Color.rgb(101, 67, 33, 0.55));
         Circle dot2 = new Circle( 9,  3, 2.0, Color.rgb(101, 67, 33, 0.50));
+        Ellipse drop = new Ellipse(-5, 5, 3, 1.5);
+        drop.setFill(Color.rgb(101, 67, 33, 0.55));
 
-        return new Group(mud, dot1, dot2);
+        return new Group(mud, dot1, dot2, drop);
     }
 
     // ------------------------------------------------------------------
-    // GOLDEN_TRUFFLE — 6-sided polygon, gold fill
+    // GOLDEN_TRUFFLE — gold hex with pock-marks + 2 sparkle stars
     // ------------------------------------------------------------------
     private static Group buildGoldenTruffle() {
         Polygon hex = regularHexagon(11, Color.rgb(255, 200, 0));
         hex.setStroke(Color.rgb(200, 140, 0));
         hex.setStrokeWidth(1.5);
-        return new Group(hex);
+
+        Color pock = Color.rgb(220, 160, 0);
+        Circle p1 = new Circle(-3, 0, 1.2, pock);
+        Circle p2 = new Circle(3, -2, 1.0, pock);
+        Circle p3 = new Circle(0, 4, 1.3, pock);
+
+        Polygon sparkle1 = sparkle(-7, -7, 2.5);
+        Polygon sparkle2 = sparkle(8, 6, 2.0);
+
+        return new Group(hex, p1, p2, p3, sparkle1, sparkle2);
     }
 
     // ------------------------------------------------------------------
-    // SPEED_MUSHROOM — blue circle cap + stem
+    // SPEED_MUSHROOM — blue cap + white spots
     // ------------------------------------------------------------------
     private static Group buildSpeedMushroom() {
         Circle cap = new Circle(0, -3, 8, Color.rgb(60, 120, 255));
@@ -254,11 +292,16 @@ public class ItemRenderer {
         stem.setFill(Color.rgb(180, 200, 255));
         stem.setStroke(Color.rgb(30, 70, 200));
         stem.setStrokeWidth(0.8);
-        return new Group(stem, cap);
+
+        Color spot = Color.rgb(240, 245, 255);
+        Circle s1 = new Circle(-3, -5, 1.2, spot);
+        Circle s2 = new Circle(2, -2, 1.4, spot);
+
+        return new Group(stem, cap, s1, s2);
     }
 
     // ------------------------------------------------------------------
-    // GREATER_SPEED — deep blue mushroom with halo
+    // GREATER_SPEED — deep blue mushroom with halo + 3 white spots
     // ------------------------------------------------------------------
     private static Group buildGreaterSpeed() {
         Circle halo = new Circle(0, -2, 12, Color.rgb(40, 90, 220, 0.25));
@@ -269,17 +312,22 @@ public class ItemRenderer {
         stem.setFill(Color.rgb(160, 180, 240));
         stem.setStroke(Color.rgb(20, 50, 160));
         stem.setStrokeWidth(0.8);
-        return new Group(halo, stem, cap);
+
+        Color spot = Color.rgb(240, 245, 255);
+        Circle s1 = new Circle(-4, -5, 1.3, spot);
+        Circle s2 = new Circle(3, -2, 1.5, spot);
+        Circle s3 = new Circle(0, -7, 1.1, spot);
+
+        return new Group(halo, stem, cap, s1, s2, s3);
     }
 
     // ------------------------------------------------------------------
-    // MAGNET_CROWN — magenta hexagon with crown spikes
+    // MAGNET_CROWN — magenta hex with crown spikes + white U glyph
     // ------------------------------------------------------------------
     private static Group buildMagnetCrown() {
         Polygon hex = regularHexagon(10, Color.rgb(220, 60, 240));
         hex.setStroke(Color.rgb(160, 30, 180));
         hex.setStrokeWidth(1.5);
-        // Three small triangle spikes on top to suggest a crown.
         Polygon spike1 = new Polygon(-6.0, -8.0, -4.0, -14.0, -2.0, -8.0);
         Polygon spike2 = new Polygon(-2.0, -10.0, 0.0, -16.0, 2.0, -10.0);
         Polygon spike3 = new Polygon(2.0, -8.0, 4.0, -14.0, 6.0, -8.0);
@@ -288,11 +336,14 @@ public class ItemRenderer {
             s.setStroke(Color.rgb(180, 140, 0));
             s.setStrokeWidth(0.8);
         }
-        return new Group(hex, spike1, spike2, spike3);
+
+        Group g = new Group(hex, spike1, spike2, spike3);
+        addMagnetGlyph(g, Color.WHITE);
+        return g;
     }
 
     // ------------------------------------------------------------------
-    // SHIELD_ACORN — gold circle with outer ring
+    // SHIELD_ACORN — gold disc with green shield ring + white tick
     // ------------------------------------------------------------------
     private static Group buildShieldAcorn() {
         Circle outer = new Circle(0, 0, 9, Color.TRANSPARENT);
@@ -301,21 +352,29 @@ public class ItemRenderer {
         Circle inner = new Circle(0, 0, 6, Color.rgb(255, 215, 0));
         inner.setStroke(Color.rgb(200, 160, 0));
         inner.setStrokeWidth(1.0);
-        return new Group(outer, inner);
+
+        Polyline tick = new Polyline(-2.5, 0.0, -0.5, 2.5, 3.0, -2.5);
+        tick.setStroke(Color.WHITE);
+        tick.setStrokeWidth(1.5);
+        tick.setFill(null);
+
+        return new Group(outer, inner, tick);
     }
 
     // ------------------------------------------------------------------
-    // MAGNET_TRUFFLE — purple hexagon
+    // MAGNET_TRUFFLE — purple hex with white magnet-U glyph
     // ------------------------------------------------------------------
     private static Group buildMagnetTruffle() {
         Polygon hex = regularHexagon(9, Color.rgb(160, 50, 220));
         hex.setStroke(Color.rgb(100, 20, 160));
         hex.setStrokeWidth(1.0);
-        return new Group(hex);
+        Group g = new Group(hex);
+        addMagnetGlyph(g, Color.WHITE);
+        return g;
     }
 
     // ------------------------------------------------------------------
-    // DECOY_MUSHROOM — orange circle cap + stem
+    // DECOY_MUSHROOM — orange cap with question-mark dot pattern
     // ------------------------------------------------------------------
     private static Group buildDecoyMushroom() {
         Circle cap = new Circle(0, -3, 8, Color.rgb(255, 160, 40));
@@ -325,11 +384,18 @@ public class ItemRenderer {
         stem.setFill(Color.rgb(255, 200, 130));
         stem.setStroke(Color.rgb(200, 100, 0));
         stem.setStrokeWidth(0.8);
-        return new Group(stem, cap);
+
+        Color mark = Color.WHITE;
+        Circle d1 = new Circle(-1, -7, 1.0, mark);
+        Circle d2 = new Circle( 2, -5, 1.0, mark);
+        Circle d3 = new Circle( 1, -2, 1.0, mark);
+        Circle dotBig = new Circle(0,  1, 1.4, mark);
+
+        return new Group(stem, cap, d1, d2, d3, dotBig);
     }
 
     // ------------------------------------------------------------------
-    // SUPER_ACORN — golden glowing circle
+    // SUPER_ACORN — golden glow + nut + 4-point star burst
     // ------------------------------------------------------------------
     private static Group buildSuperAcorn() {
         Circle glow = new Circle(0, 0, 12, Color.rgb(255, 215, 0, 0.3));
@@ -338,26 +404,61 @@ public class ItemRenderer {
         nut.setStrokeWidth(1.5);
         Ellipse cap = new Ellipse(0, -5, 5, 3);
         cap.setFill(Color.rgb(200, 140, 0));
-        return new Group(glow, nut, cap);
+
+        Polygon star = new Polygon(
+            0.0, -10.0,
+            2.0, -2.0,
+            10.0, 0.0,
+            2.0, 2.0,
+            0.0, 10.0,
+            -2.0, 2.0,
+            -10.0, 0.0,
+            -2.0, -2.0
+        );
+        star.setFill(Color.rgb(255, 255, 255, 0.55));
+
+        return new Group(glow, star, nut, cap);
     }
 
     // -------------------------------------------------------------------------
-    // Utility
+    // Utilities
     // -------------------------------------------------------------------------
+
+    /** Adds a small "U" magnet glyph centred on (0, 0) to the given group. */
+    private static void addMagnetGlyph(Group g, Color stroke) {
+        Line left  = new Line(-3, -2, -3, 3);
+        Line right = new Line( 3, -2,  3, 3);
+        Line bottom = new Line(-3, 3, 3, 3);
+        for (Line l : new Line[]{left, right, bottom}) {
+            l.setStroke(stroke);
+            l.setStrokeWidth(1.6);
+            g.getChildren().add(l);
+        }
+    }
+
+    /** Tiny 4-point sparkle star at (cx, cy). */
+    private static Polygon sparkle(double cx, double cy, double size) {
+        Polygon s = new Polygon(
+            cx,         cy - size,
+            cx + size * 0.35, cy - size * 0.35,
+            cx + size,  cy,
+            cx + size * 0.35, cy + size * 0.35,
+            cx,         cy + size,
+            cx - size * 0.35, cy + size * 0.35,
+            cx - size,  cy,
+            cx - size * 0.35, cy - size * 0.35
+        );
+        s.setFill(Color.rgb(255, 255, 255, 0.85));
+        return s;
+    }
 
     /**
      * Creates a regular hexagon centred at (0, 0) with the given radius and fill.
-     *
-     * <p>The hexagon is flat-top oriented: the first vertex is at angle 0° (right).
-     *
-     * @param radius pixel distance from centre to each vertex
-     * @param fill   fill colour
-     * @return a configured {@link Polygon}
      */
     private static Polygon regularHexagon(double radius, Color fill) {
         Polygon hex = new Polygon();
         for (int i = 0; i < 6; i++) {
-            double angle = Math.toRadians(60.0 * i); // flat-top: start at 0°
+            double angle = Math.toRadians(60.0 * i);
             hex.getPoints().add(radius * Math.cos(angle));
             hex.getPoints().add(radius * Math.sin(angle));
         }
