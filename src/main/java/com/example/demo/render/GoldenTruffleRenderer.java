@@ -5,25 +5,16 @@ import com.example.demo.world.GameMap;
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.Polygon;
 
 /**
  * Renders the Golden Truffle item and its pulse announcement animation.
  *
- * <p>The truffle is drawn as a gold hexagon with a subtle sinusoidal scale pulse.
- * When first spawned, an expanding translucent gold circle plays once to draw
- * the player's attention to the truffle's position.
- *
- * <p>Usage:
- * <pre>
- *   GoldenTruffleRenderer gtr = new GoldenTruffleRenderer();
- *   sceneRoot.getChildren().add(gtr.getGroup());
- *
- *   // In the game loop (pass state from GoldenTruffleManager):
- *   gtr.update(manager.getGoldenTruffle(),
- *              manager.isPulseActive(),
- *              manager.getPulseRadius());
- * </pre>
+ * <p>The truffle is a faceted gold gem (outer hex, inner hex highlight, four
+ * facet triangles, two light blooms) surrounded by a slowly rotating ring of
+ * sparkles. A sinusoidal scale pulse plays continuously, and an expanding gold
+ * circle plays once per spawn to draw the player's attention.
  */
 public class GoldenTruffleRenderer {
 
@@ -32,63 +23,82 @@ public class GoldenTruffleRenderer {
     private static final Color  GOLD          = Color.rgb(255, 215, 0);
     private static final Color  GOLD_BRIGHT   = Color.rgb(255, 235, 80);
 
-    // -------------------------------------------------------------------------
-    // Scene-graph nodes
-    // -------------------------------------------------------------------------
-
-    /** Root group added to the scene; all other nodes are children of this. */
+    /** Root group added to the scene. */
     private final Group group = new Group();
 
     /** The expanding announcement circle (one shot per spawn). */
     private final Circle pulseCircle;
 
-    /** The gold hexagon that represents the truffle. */
-    private final Polygon hexagon;
+    /** The combined truffle visual (hex, facets, blooms). Translated each frame. */
+    private final Group truffle;
+
+    /** Sub-group for sparkles, rotated slowly each frame for shimmer. */
+    private final Group sparkles;
 
     /** Internal tick counter used for the sinusoidal size animation. */
     private long animTick = 0;
 
-    // -------------------------------------------------------------------------
-    // Constructor
-    // -------------------------------------------------------------------------
-
-    /** Creates a new renderer with all nodes initialised to hidden state. */
     public GoldenTruffleRenderer() {
-        // Build hexagon (flat-top, centred at 0,0 — translated later)
-        hexagon = regularHexagon(HEX_RADIUS, GOLD);
-        hexagon.setStroke(GOLD_BRIGHT);
-        hexagon.setStrokeWidth(2.0);
-        hexagon.setVisible(false);
+        // Outer light bloom
+        Circle bloomOuter = new Circle(0, 0, HEX_RADIUS + 8, Color.rgb(255, 220, 100, 0.16));
+        Circle bloomInner = new Circle(0, 0, HEX_RADIUS + 2, Color.rgb(255, 230, 120, 0.28));
 
-        // Build pulse circle
+        // Outer hex
+        Polygon outerHex = regularHexagon(HEX_RADIUS, GOLD);
+        outerHex.setStroke(GOLD_BRIGHT);
+        outerHex.setStrokeWidth(2.0);
+
+        // Facet triangles giving the gem-cut look
+        Polygon facetTopL = new Polygon(0.0, -HEX_RADIUS, -HEX_RADIUS * 0.85, -HEX_RADIUS * 0.5, 0.0, 0.0);
+        Polygon facetTopR = new Polygon(0.0, -HEX_RADIUS,  HEX_RADIUS * 0.85, -HEX_RADIUS * 0.5, 0.0, 0.0);
+        Polygon facetBotL = new Polygon(0.0,  HEX_RADIUS, -HEX_RADIUS * 0.85,  HEX_RADIUS * 0.5, 0.0, 0.0);
+        Polygon facetBotR = new Polygon(0.0,  HEX_RADIUS,  HEX_RADIUS * 0.85,  HEX_RADIUS * 0.5, 0.0, 0.0);
+        facetTopL.setFill(Color.rgb(255, 240, 130, 0.55));
+        facetTopR.setFill(Color.rgb(220, 160, 0, 0.45));
+        facetBotL.setFill(Color.rgb(220, 160, 0, 0.45));
+        facetBotR.setFill(Color.rgb(255, 240, 130, 0.55));
+
+        // Inner highlight hex
+        Polygon innerHex = regularHexagon(HEX_RADIUS * 0.45, Color.rgb(255, 250, 200, 0.85));
+        innerHex.setTranslateX(-2.5);
+        innerHex.setTranslateY(-2.5);
+
+        // Inner shine ellipse
+        Ellipse shine = new Ellipse(-HEX_RADIUS * 0.3, -HEX_RADIUS * 0.4,
+                                    HEX_RADIUS * 0.3, HEX_RADIUS * 0.18);
+        shine.setFill(Color.rgb(255, 255, 255, 0.7));
+
+        // Five sparkles in a slowly rotating sub-group
+        sparkles = new Group();
+        for (int i = 0; i < 5; i++) {
+            double a = Math.toRadians(i * 72);
+            double r = HEX_RADIUS + 6;
+            sparkles.getChildren().add(sparkle(Math.cos(a) * r, Math.sin(a) * r, 2.6));
+        }
+
+        truffle = new Group(bloomOuter, bloomInner,
+                            outerHex,
+                            facetTopL, facetTopR, facetBotL, facetBotR,
+                            innerHex, shine,
+                            sparkles);
+        truffle.setVisible(false);
+
+        // Pulse circle
         pulseCircle = new Circle(0, 0, 0);
         pulseCircle.setFill(Color.TRANSPARENT);
         pulseCircle.setStroke(GOLD);
         pulseCircle.setStrokeWidth(3.0);
         pulseCircle.setVisible(false);
 
-        group.getChildren().addAll(pulseCircle, hexagon);
+        group.getChildren().addAll(pulseCircle, truffle);
     }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
-    /**
-     * Returns the scene-graph group that should be added to the scene root.
-     *
-     * @return the root group
-     */
     public Group getGroup() {
         return group;
     }
 
     /**
      * Refreshes the visual state of the golden truffle and its pulse animation.
-     *
-     * @param item        the active truffle item, or {@code null} if none is present
-     * @param pulseActive whether the announcement pulse should be visible
-     * @param pulseRadius current radius of the announcement pulse circle
      */
     public void update(Item item, boolean pulseActive, double pulseRadius) {
         animTick++;
@@ -97,19 +107,19 @@ public class GoldenTruffleRenderer {
             double cx = item.getCol() * TILE + TILE / 2.0;
             double cy = item.getRow() * TILE + TILE / 2.0;
 
-            // Position the hexagon
-            hexagon.setTranslateX(cx);
-            hexagon.setTranslateY(cy);
-            hexagon.setVisible(true);
+            truffle.setTranslateX(cx);
+            truffle.setTranslateY(cy);
+            truffle.setVisible(true);
 
             // Sinusoidal scale: oscillates between 0.85 and 1.15
             double scale = 1.0 + 0.15 * Math.sin(animTick * 0.12);
-            hexagon.setScaleX(scale);
-            hexagon.setScaleY(scale);
+            truffle.setScaleX(scale);
+            truffle.setScaleY(scale);
 
-            // Pulse circle
+            // Slow sparkle rotation (full rotation every ~10 seconds at 60fps)
+            sparkles.setRotate(animTick * 0.6);
+
             if (pulseActive) {
-                // Opacity fades from 1.0 to 0 as the circle expands
                 double maxRadius = 200.0;
                 double opacity   = Math.max(0.0, 1.0 - pulseRadius / maxRadius);
                 pulseCircle.setCenterX(cx);
@@ -120,28 +130,35 @@ public class GoldenTruffleRenderer {
             } else {
                 pulseCircle.setVisible(false);
             }
-
         } else {
-            hexagon.setVisible(false);
+            truffle.setVisible(false);
             pulseCircle.setVisible(false);
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Utility
-    // -------------------------------------------------------------------------
+    /** Tiny 4-point sparkle star at (cx, cy). */
+    private static Polygon sparkle(double cx, double cy, double size) {
+        Polygon s = new Polygon(
+            cx,                  cy - size,
+            cx + size * 0.35,    cy - size * 0.35,
+            cx + size,           cy,
+            cx + size * 0.35,    cy + size * 0.35,
+            cx,                  cy + size,
+            cx - size * 0.35,    cy + size * 0.35,
+            cx - size,           cy,
+            cx - size * 0.35,    cy - size * 0.35
+        );
+        s.setFill(Color.rgb(255, 255, 200, 0.9));
+        return s;
+    }
 
     /**
      * Builds a regular flat-top hexagon centred at (0, 0).
-     *
-     * @param radius pixel distance from centre to each vertex
-     * @param fill   fill colour
-     * @return configured {@link Polygon}
      */
     private static Polygon regularHexagon(double radius, Color fill) {
         Polygon hex = new Polygon();
         for (int i = 0; i < 6; i++) {
-            double angle = Math.toRadians(60.0 * i); // flat-top: first vertex at 0°
+            double angle = Math.toRadians(60.0 * i);
             hex.getPoints().add(radius * Math.cos(angle));
             hex.getPoints().add(radius * Math.sin(angle));
         }
